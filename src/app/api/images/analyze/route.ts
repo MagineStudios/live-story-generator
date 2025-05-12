@@ -105,14 +105,17 @@ export async function POST(req: NextRequest) {
         // If we have an elementId, update the element with the description
         if (elementId) {
             try {
-                await prisma.myWorldElement.update({
+                console.log(`Attempting to update element ${elementId} with description:`, analysisText);
+
+                const updatedElement = await prisma.myWorldElement.update({
                     where: { id: elementId },
                     data: {
                         description: analysisText,
                         name: suggestedName || getCategoryDefaultName(category)
                     }
                 });
-                console.log(`Updated element ${elementId} with description`);
+
+                console.log(`Successfully updated element ${elementId}:`, updatedElement);
             } catch (updateError) {
                 console.error('Failed to update element description:', updateError);
                 // Continue anyway to return the analysis

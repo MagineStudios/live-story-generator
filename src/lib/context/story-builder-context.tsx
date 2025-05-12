@@ -122,6 +122,7 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
 
             if (!uploadRes.ok) throw new Error('Failed to upload image');
             const { url, publicId, elementId } = await uploadRes.json();
+            console.log("Uploaded element ID:", elementId);
 
             // Then analyze with GPT Vision
             const analyzeRes = await fetch('/api/images/analyze', {
@@ -136,39 +137,82 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
 
             if (!analyzeRes.ok) throw new Error('Failed to analyze image');
             const { description, recognizedElementId, suggestedName } = await analyzeRes.json();
+            console.log("Image analyzed, description:", description);
 
             // If this is a recognized character, set the recognition flag
             if (recognizedElementId && category === ElementCategory.CHARACTER) {
-                // Get the recognized element details
-                const response = await fetch(`/api/my-world/elements/${recognizedElementId}`);
-                if (response.ok) {
-                    const { element } = await response.json();
-                    if (element) {
-                        setRecognizedCharacter({
-                            id: element.id,
-                            name: element.name,
-                            imageUrl: element.imageUrl
-                        });
-                        // We return early, not adding a new element
-                        return;
+                try {
+                    // Get the recognized element details
+                    const response = await fetch(`/api/my-world/elements/${recognizedElementId}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        // Handle both response formats
+                        const element = data.element || data;
+
+                        if (element) {
+                            setRecognizedCharacter({
+                                id: element.id,
+                                name: element.name,
+                                imageUrl: element.imageUrl
+                            });
+                            // We return early, not adding a new element
+                            return;
+                        }
                     }
+                } catch (error) {
+                    console.error("Error fetching recognized character:", error);
+                    // Continue with the rest of the function in case of error
                 }
             }
 
-            // Now fetch the complete element that has been updated with the description
-            const elementRes = await fetch(`/api/my-world/elements/${elementId}`);
-            if (!elementRes.ok) throw new Error('Failed to get updated element');
-            const { element } = await elementRes.json();
+            try {
+                console.log("Fetching element with ID:", elementId);
+                // Now fetch the complete element that has been updated with the description
+                const elementRes = await fetch(`/api/my-world/elements/${elementId}`);
+                console.log("Element response status:", elementRes.status);
 
-            if (element) {
-                // Add the updated element to the selected elements
-                addElement({
-                    ...element,
+                if (elementRes.ok) {
+                    const data = await elementRes.json();
+                    console.log("Element response data:", data);
+
+                    // Handle both response formats
+                    const element = data.element || data;
+
+                    if (element) {
+                        console.log("Adding element to selected elements:", element);
+                        // Add the updated element to the selected elements
+                        addElement({
+                            ...element,
+                            isSelected: true
+                        });
+                        return element;
+                    } else {
+                        console.error("Element data is missing or invalid:", data);
+                        throw new Error("Invalid element data received");
+                    }
+                } else {
+                    throw new Error(`Failed to get updated element: ${elementRes.status}`);
+                }
+            } catch (error) {
+                console.error("Error fetching updated element:", error);
+
+                // Fallback - create a basic element with what we know
+                console.log("Creating fallback element with description:", description);
+                const fallbackElement = {
+                    id: elementId,
+                    name: suggestedName || `My ${category.toLowerCase()}`,
+                    description: description || '',
+                    imageUrl: url,
+                    publicId: publicId,
+                    category: category,
+                    isDefault: false,
                     isSelected: true
-                });
-            }
+                };
 
-            return element;
+                console.log("Using fallback element:", fallbackElement);
+                addElement(fallbackElement);
+                return fallbackElement;
+            }
         } catch (error) {
             console.error("Failed to process uploaded image:", error);
             throw error;

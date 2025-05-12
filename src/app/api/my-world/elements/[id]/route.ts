@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(req: NextRequest, context: any) {
-  const { id } = context.params as { id: string };
+  const { id } = await context.params as { id: string };
     try {
         const { userId } = await auth();
         if (!userId) {
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest, context: any) {
 
 // Update the PUT and DELETE functions with the same pattern
 export async function PUT(req: NextRequest, context: any) {
-  const { id } = context.params as { id: string };
+  const { id } = await context.params as { id: string };
     try {
         const { userId } = await auth();
         if (!userId) {
@@ -78,7 +78,7 @@ export async function PUT(req: NextRequest, context: any) {
 }
 
 export async function DELETE(req: NextRequest, context: any) {
-  const { id } = context.params as { id: string };
+  const { id } = await context.params as { id: string };
     try {
         const { userId } = await auth();
         if (!userId) {
