@@ -50,6 +50,7 @@ interface StoryBuilderState {
     setThemePrompt: (prompt: string) => void;
     goToNextStep: () => void;
     goToPrevStep: () => void;
+    updateElementName: (id: string, name: string) => void;
     setCurrentStep: (step: number) => void;
     generateThemeSuggestions: () => Promise<void>;
     createStory: () => Promise<string | undefined>;
@@ -102,6 +103,12 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
     const updateElementDescription = (id: string, description: string) => {
         setSelectedElements(curr =>
             curr.map(el => el.id === id ? {...el, description} : el)
+        );
+    };
+
+    const updateElementName = (id: string, name: string) => {
+        setSelectedElements(curr =>
+            curr.map(el => el.id === id ? {...el, name} : el)
         );
     };
 
@@ -451,6 +458,7 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
                 generatedStoryId,
                 recognizedCharacter,
                 detectedElements,
+                updateElementName,
                 addElement,
                 removeElement,
                 clearAllElements,

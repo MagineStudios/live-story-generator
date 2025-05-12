@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
             }. If the person in this image matches any of these characters, please mention that in your response.`;
         }
 
-        const prompt = getPromptForCategory(category, characterContext);
+        const prompt = getPromptForCategory(category);
         console.log("Analysis text prompt:", prompt);
 
         const response = await openai.chat.completions.create({
@@ -139,22 +139,22 @@ export async function POST(req: NextRequest) {
     }
 }
 
-function getPromptForCategory(category: ElementCategory, characterContext: string = ''): string {
+function getPromptForCategory(category: ElementCategory): string {
     switch (category) {
-        case 'CHARACTER':
-            return `Provide a detailed description of this character for a children's story. Include their appearance, likely age, gender, and potential personality traits based on visual cues. Keep it child-friendly and under 150 words. ${characterContext}`;
+        case ElementCategory.CHARACTER:
+            return "Describe this character in under 50 words, focusing exclusively on precise visual details like: age, face, hair, clothing, expression, and one distinctive feature. Do not include speculation about personality traits, life story, or non-visual characteristics. Just provide objective visual details. Format as a single paragraph.";
 
-        case 'PET':
-            return "Provide a detailed description of this pet or animal for a children's story. Include its species, appearance, and potential personality traits. Keep it child-friendly and under 150 words.";
+        case ElementCategory.PET:
+            return "Describe this animal/pet in under 50 words, focusing exclusively on precise visual details like: species, breed, size, color, markings, fur/feathers, and one distinctive feature. Do not include personality traits or narrative elements. Just provide objective visual details. Format as a single paragraph.";
 
-        case 'LOCATION':
-            return "Provide a detailed description of this location for a children's story. Include its appearance, atmosphere, and any notable features. Keep it child-friendly and under 150 words.";
+        case ElementCategory.LOCATION:
+            return "Describe this location in under 50 words, focusing exclusively on precise visual details like: environment type, key structures, colors, lighting, atmosphere, and one distinctive feature. Do not include historical context or non-visual elements. Just provide objective visual details. Format as a single paragraph.";
 
-        case 'OBJECT':
-            return "Provide a detailed description of this object for a children's story. Include its appearance, potential function, and how it might be used in a story. Keep it child-friendly and under 150 words.";
+        case ElementCategory.OBJECT:
+            return "Describe this object in under 50 words, focusing exclusively on precise visual details like: what it is, size, shape, color, material, condition, and one distinctive feature. Do not include history, function, or non-visual characteristics. Just provide objective visual details. Format as a single paragraph.";
 
         default:
-            return "Describe what you see in this image in detail for use in a children's story. Keep it child-friendly and under 150 words.";
+            return "Provide a precise, objective visual description of what you see in under 50 words. Focus only on physical, visual details. Avoid speculation about non-visual characteristics. Format as a single paragraph.";
     }
 }
 
