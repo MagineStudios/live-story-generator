@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 import { Buffer } from 'buffer';
 import prisma from '@/lib/prisma';
+import type { ImageQuality } from '@prisma/client';
 import { auth } from '@clerk/nextjs/server';
 
 // ---------------------------------------------------------------------------
@@ -70,7 +71,9 @@ export async function POST(req: NextRequest) {
         (form.get('model') as string | null) ?? DEFAULT_MODEL;
     const quality =
         (form.get('quality') as string | null) ??
-        GeneratedImageQuality.High;
+        GeneratedImageQuality.Low;
+    const prismaQuality: ImageQuality =
+        (quality?.toUpperCase() as ImageQuality) ?? 'LOW';
     const size =
         (form.get('size') as string | null) ?? GeneratedImageSize.Portrait;
 
@@ -152,7 +155,7 @@ export async function POST(req: NextRequest) {
       if ('url' in item && item.url) {
         console.log('Uploading via URL:', item.url);
         result = await cloudinary.uploader.upload(item.url, {
-          folder: 'fakeflex/edits',
+          folder: 'live-story/edits',
           overwrite: true,
         });
       } else if ('b64_json' in item && item.b64_json) {
@@ -160,7 +163,7 @@ export async function POST(req: NextRequest) {
         const buffer = Buffer.from(item.b64_json, 'base64');
         result = await new Promise<UploadApiResponse>((resolve, reject) => {
           const stream = cloudinary.uploader.upload_stream(
-              { folder: 'fakeflex/edits', overwrite: true },
+              { folder: 'live-story/edits', overwrite: true },
               (err, res) => (err ? reject(err) : resolve(res as UploadApiResponse))
           );
           stream.end(buffer);
@@ -171,10 +174,11 @@ export async function POST(req: NextRequest) {
       }
 
       // Persist metadata per image
-      await prisma.image.create({
+      await prisma.imageVariant.create({
         data: {
           userId,
           templateKey: 'edit',
+          quality: prismaQuality,
           publicId: result.public_id,
           secureUrl: result.secure_url,
           width: result.width,

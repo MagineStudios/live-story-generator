@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
 import prisma from '@/lib/prisma';
+import type { JobStatus } from '@prisma/client';
 import { auth } from '@clerk/nextjs/server';
 // @ts-expect-error - jsonwebtoken types are not available
 import jwt from 'jsonwebtoken';
@@ -126,13 +127,15 @@ export async function POST(req: NextRequest) {
 
         const taskId     = klingJson?.data?.task_id     as string;
         const taskStatus = klingJson?.data?.task_status as string;
+        const prismaStatus: JobStatus =
+            (taskStatus?.toUpperCase() as JobStatus) ?? 'SUBMITTED';
 
         // 4. Persist task ───────────────────────────────────────────────────────
         await prisma.videoTask.create({
             data: {
                 id: taskId,
                 userId,
-                status: taskStatus, // submitted | processing | ...
+                status: prismaStatus,
                 imageUrl,
                 prompt,
             },

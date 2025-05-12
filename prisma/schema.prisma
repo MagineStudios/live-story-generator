@@ -29,6 +29,12 @@ enum VideoQuality {
   HIGH
 }
 
+enum ImageQuality {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 // ---------- Core tables ----------
 model User {
   id         String         @id // equals Clerk userId
@@ -71,18 +77,20 @@ model StoryPage {
 }
 
 model ImageVariant {
-  id            String     @id @default(cuid())
-  page          StoryPage? @relation("PageVariants", fields: [pageId], references: [id])
+  id            String       @id @default(cuid())
+  page          StoryPage?   @relation("PageVariants", fields: [pageId], references: [id])
   pageId        String?
-  user          User       @relation(fields: [userId], references: [id])
+  user          User         @relation(fields: [userId], references: [id])
   userId        String
   publicId      String
   secureUrl     String
   width         Int?
   height        Int?
-  isChosen      Boolean    @default(false)
-  createdAt     DateTime   @default(now())
-  chosenForPage StoryPage? @relation("ChosenImage")
+  templateKey   String? // "original", "edit", "generated"
+  quality       ImageQuality @default(HIGH)
+  isChosen      Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  chosenForPage StoryPage?   @relation("ChosenImage")
 }
 
 // ---------- Async job tables ----------
@@ -96,6 +104,7 @@ model VideoTask {
   page        StoryPage?   @relation("PageVideoTasks", fields: [pageId], references: [id])
   pageId      String?
   prompt      String
+  imageUrl    String
   quality     VideoQuality @default(LOW)
   status      JobStatus    @default(SUBMITTED)
   videoUrl    String?
