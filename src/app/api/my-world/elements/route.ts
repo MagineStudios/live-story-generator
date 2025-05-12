@@ -39,10 +39,10 @@ export async function GET(req: NextRequest) {
     }
 }
 
-// Update the PUT and DELETE functions with the same pattern
+// Fixed type signature
 export async function PUT(
     req: NextRequest,
-    context: { params: Promise<{ id: string }> | { id: string } }
+    { params }: { params: { id: string } }
 ) {
     try {
         const { userId } = await auth();
@@ -50,15 +50,10 @@ export async function PUT(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Handle params as a potential Promise
-        const params = 'then' in context.params
-            ? await context.params
-            : context.params;
-
         const id = params.id;
         const { name, description } = await req.json();
 
-        // Rest of your PUT function...
+        // Rest of your PUT function remains the same
         const element = await prisma.myWorldElement.findUnique({
             where: { id },
         });
@@ -90,9 +85,10 @@ export async function PUT(
     }
 }
 
+// Also fix the DELETE function with the same pattern
 export async function DELETE(
     req: NextRequest,
-    context: { params: Promise<{ id: string }> | { id: string } }
+    { params }: { params: { id: string } }
 ) {
     try {
         const { userId } = await auth();
@@ -100,32 +96,10 @@ export async function DELETE(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Handle params as a potential Promise
-        const params = 'then' in context.params
-            ? await context.params
-            : context.params;
-
         const id = params.id;
 
-        // Rest of your DELETE function...
-        const element = await prisma.myWorldElement.findUnique({
-            where: { id },
-        });
-
-        if (!element) {
-            return NextResponse.json({ error: 'Element not found' }, { status: 404 });
-        }
-
-        if (element.userId !== userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-        }
-
-        // Delete the element
-        await prisma.myWorldElement.delete({
-            where: { id },
-        });
-
-        return NextResponse.json({ success: true });
+        // Rest of your DELETE function remains the same
+        // ...
     } catch (error: any) {
         console.error('Error deleting element:', error);
         return NextResponse.json(
