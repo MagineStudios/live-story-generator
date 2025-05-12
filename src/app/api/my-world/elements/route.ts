@@ -1,54 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
-import { ElementCategory } from '@prisma/client';
 
-export async function POST(req: NextRequest) {
+export async function GET(
+    req: NextRequest,
+    context: { params: Promise<{ id: string }> | { id: string } }
+) {
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { name, description, imageUrl, publicId, category, isDetectedInStory = false } = await req.json();
+        // Handle params as a potential Promise
+        const params = 'then' in context.params
+            ? await context.params
+            : context.params;
 
-        if (!name || !imageUrl || !category) {
-            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-        }
+        const id = params.id;
 
-        // Create the new element
-        const newElement = await prisma.myWorldElement.create({
-            data: {
-                name,
-                description,
-                imageUrl,
-                publicId,
-                category: category as ElementCategory,
-                isDefault: false,
-                isDetectedInStory,
-                userId,
-            }
+        // Get the specific element
+        const element = await prisma.myWorldElement.findUnique({
+            where: { id }
         });
 
-        return NextResponse.json(newElement);
+        if (!element) {
+            return NextResponse.json({ error: 'Element not found' }, { status: 404 });
+        }
+
+        // Check if user has access to this element
+        if (!element.isDefault && element.userId !== userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+        }
+
+        return NextResponse.json(element);
     } catch (error: any) {
-        console.error('Error creating my world element:', error);
+        console.error('Error fetching element:', error);
         return NextResponse.json(
-            { error: error.message || 'Failed to create element' },
+            { error: error.message || 'Failed to fetch element' },
             { status: 500 }
         );
     }
 }
-export async function PUT(req: NextRequest) {
+
+// Update the PUT and DELETE functions with the same pattern
+export async function PUT(
+    req: NextRequest,
+    context: { params: Promise<{ id: string }> | { id: string } }
+) {
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { id, name, description } = await req.json();
+        // Handle params as a potential Promise
+        const params = 'then' in context.params
+            ? await context.params
+            : context.params;
 
-        // Check if the element exists and belongs to the user
+        const id = params.id;
+        const { name, description } = await req.json();
+
+        // Rest of your PUT function...
         const element = await prisma.myWorldElement.findUnique({
             where: { id },
         });
@@ -58,7 +72,7 @@ export async function PUT(req: NextRequest) {
         }
 
         if (element.userId !== userId && !element.isDefault) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
         // Update the element
@@ -72,7 +86,7 @@ export async function PUT(req: NextRequest) {
 
         return NextResponse.json(updatedElement);
     } catch (error: any) {
-        console.error('Error updating my world element:', error);
+        console.error('Error updating element:', error);
         return NextResponse.json(
             { error: error.message || 'Failed to update element' },
             { status: 500 }
@@ -80,40 +94,46 @@ export async function PUT(req: NextRequest) {
     }
 }
 
-export async function GET(req: NextRequest) {
+export async function DELETE(
+    req: NextRequest,
+    context: { params: Promise<{ id: string }> | { id: string } }
+) {
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { searchParams } = new URL(req.url);
-        const category = searchParams.get('category');
+        // Handle params as a potential Promise
+        const params = 'then' in context.params
+            ? await context.params
+            : context.params;
 
-        // Fetch all elements for the user, including defaults
-        const elements = await prisma.myWorldElement.findMany({
-            where: {
-                AND: [
-                    {
-                        OR: [
-                            { userId },
-                            { isDefault: true }
-                        ]
-                    },
-                    category ? { category: category as ElementCategory } : {}
-                ]
-            },
-            orderBy: [
-                { isDefault: 'asc' },
-                { createdAt: 'desc' }
-            ],
+        const id = params.id;
+
+        // Rest of your DELETE function...
+        const element = await prisma.myWorldElement.findUnique({
+            where: { id },
         });
 
-        return NextResponse.json({ elements });
+        if (!element) {
+            return NextResponse.json({ error: 'Element not found' }, { status: 404 });
+        }
+
+        if (element.userId !== userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+        }
+
+        // Delete the element
+        await prisma.myWorldElement.delete({
+            where: { id },
+        });
+
+        return NextResponse.json({ success: true });
     } catch (error: any) {
-        console.error('Error fetching my world elements:', error);
+        console.error('Error deleting element:', error);
         return NextResponse.json(
-            { error: error.message || 'Failed to fetch elements' },
+            { error: error.message || 'Failed to delete element' },
             { status: 500 }
         );
     }
