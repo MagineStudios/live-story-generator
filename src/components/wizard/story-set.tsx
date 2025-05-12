@@ -689,7 +689,7 @@ export default function StorySet() {
                                                 onChange={(e) => setEditDescription(e.target.value)}
                                                 className="border-slate-300 focus:border-blue-500 min-h-[120px] bg-white"
                                                 placeholder="Provide a concise visual description (under 50 words)"
-                                                maxLength={250}
+                                                maxLength={350}
                                             />
                                             <div className="flex justify-between items-center">
                                                 <span className="text-xs text-slate-500">
