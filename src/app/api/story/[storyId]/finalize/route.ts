@@ -13,10 +13,12 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET,
     secure: true,
 });
+export const dynamic = 'force-dynamic';
 
+// Updated type signature for Next.js 15
 export async function POST(
     req: NextRequest,
-    { params }: { params: { storyId: string } }
+    context: { params: { storyId: string } }
 ) {
     try {
         const { userId } = await auth();
@@ -24,8 +26,9 @@ export async function POST(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { storyId } = params;
+        const { storyId } = context.params;
 
+        // Rest of your function remains the same
         // Check if the story exists and belongs to the user
         const story = await prisma.story.findUnique({
             where: { id: storyId },
@@ -79,6 +82,9 @@ export async function POST(
     }
 }
 
+// Helper functions remain unchanged
+// generatePDF and uploadPDFToCloudinary functions...
+
 // Helper function to generate PDF
 async function generatePDF(story: any, pages: any[]) {
     return new Promise<Buffer>(async (resolve, reject) => {
@@ -87,7 +93,7 @@ async function generatePDF(story: any, pages: any[]) {
             const doc = new PDFDocument({ size: 'A4', margin: 50 });
             const buffers: Buffer[] = [];
 
-            doc.on('data', (buffer) => buffers.push(buffer));
+            doc.on('data', (buffer: any) => buffers.push(buffer));
             doc.on('end', () => resolve(Buffer.concat(buffers)));
             doc.on('error', reject);
 
