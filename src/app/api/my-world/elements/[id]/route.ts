@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 
-export const GET = async (
-    req: NextRequest,
-    context: { params: { id: string } }
-) => {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const id = context.params.id;
+        const id = params.id;
 
         // Get the specific element
         const element = await prisma.myWorldElement.findUnique({
@@ -36,22 +36,23 @@ export const GET = async (
             { status: 500 }
         );
     }
-};
+}
 
-export const PUT = async (
-    req: NextRequest,
-    context: { params: { id: string } }
-) => {
+// Update the PUT and DELETE functions with the same pattern
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const id = context.params.id;
+        const id = params.id;
         const { name, description } = await req.json();
 
-        // Check if the element exists and belongs to the user
+        // Rest of your PUT function...
         const element = await prisma.myWorldElement.findUnique({
             where: { id },
         });
@@ -81,21 +82,21 @@ export const PUT = async (
             { status: 500 }
         );
     }
-};
+}
 
-export const DELETE = async (
-    req: NextRequest,
-    context: { params: { id: string } }
-) => {
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const id = context.params.id;
+        const id = params.id;
 
-        // Check if the element exists and belongs to the user
+        // Rest of your DELETE function...
         const element = await prisma.myWorldElement.findUnique({
             where: { id },
         });
@@ -121,4 +122,4 @@ export const DELETE = async (
             { status: 500 }
         );
     }
-};
+}
