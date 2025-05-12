@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 
+// This route will list all elements
 export async function GET(req: NextRequest) {
     try {
         const { userId } = await auth();
@@ -9,101 +10,21 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Get the id from query parameters
-        const id = req.nextUrl.searchParams.get('id');
-        if (!id) {
-            return NextResponse.json({ error: 'Missing id parameter' }, { status: 400 });
-        }
-
-        // Get the specific element
-        const element = await prisma.myWorldElement.findUnique({
-            where: { id }
-        });
-
-        if (!element) {
-            return NextResponse.json({ error: 'Element not found' }, { status: 404 });
-        }
-
-        // Check if user has access to this element
-        if (!element.isDefault && element.userId !== userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-        }
-
-        return NextResponse.json(element);
-    } catch (error: any) {
-        console.error('Error fetching element:', error);
-        return NextResponse.json(
-            { error: error.message || 'Failed to fetch element' },
-            { status: 500 }
-        );
-    }
-}
-
-// Fixed type signature
-export async function PUT(
-    req: NextRequest,
-    { params }: { params: { id: string } }
-) {
-    try {
-        const { userId } = await auth();
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const id = params.id;
-        const { name, description } = await req.json();
-
-        // Rest of your PUT function remains the same
-        const element = await prisma.myWorldElement.findUnique({
-            where: { id },
-        });
-
-        if (!element) {
-            return NextResponse.json({ error: 'Element not found' }, { status: 404 });
-        }
-
-        if (element.userId !== userId && !element.isDefault) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-        }
-
-        // Update the element
-        const updatedElement = await prisma.myWorldElement.update({
-            where: { id },
-            data: {
-                name,
-                description,
+        // List all elements accessible by the user
+        const elements = await prisma.myWorldElement.findMany({
+            where: {
+                OR: [
+                    { userId },
+                    { isDefault: true }
+                ]
             }
         });
 
-        return NextResponse.json(updatedElement);
+        return NextResponse.json(elements);
     } catch (error: any) {
-        console.error('Error updating element:', error);
+        console.error('Error fetching elements:', error);
         return NextResponse.json(
-            { error: error.message || 'Failed to update element' },
-            { status: 500 }
-        );
-    }
-}
-
-// Also fix the DELETE function with the same pattern
-export async function DELETE(
-    req: NextRequest,
-    { params }: { params: { id: string } }
-) {
-    try {
-        const { userId } = await auth();
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const id = params.id;
-
-        // Rest of your DELETE function remains the same
-        // ...
-    } catch (error: any) {
-        console.error('Error deleting element:', error);
-        return NextResponse.json(
-            { error: error.message || 'Failed to delete element' },
+            { error: error.message || 'Failed to fetch elements' },
             { status: 500 }
         );
     }
