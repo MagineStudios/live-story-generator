@@ -62,6 +62,9 @@ export default function StorySet() {
         [ElementCategory.OBJECT]: [],
     });
 
+    // Track all uploaded elements, including those not in selectedElements
+    const [uploadedElements, setUploadedElements] = useState<DefaultElement[]>([]);
+
     const [isLoading, setIsLoading] = useState(true);
     const [detailElement, setDetailElement] = useState<(DefaultElement & {isSelected?: boolean}) | null>(null);
     const [editName, setEditName] = useState("");
@@ -70,7 +73,6 @@ export default function StorySet() {
     const [isEditingDescription, setIsEditingDescription] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [elementToDelete, setElementToDelete] = useState<string | null>(null);
-    const [elementToPermaDelete, setElementToPermaDelete] = useState<string | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
     const nameInputRef = useRef<HTMLInputElement>(null);
@@ -106,7 +108,25 @@ export default function StorySet() {
         }
 
         fetchDefaultElements();
+
+        // Fetch user's uploaded elements when component mounts
+        fetchUserElements();
     }, []);
+
+    // Fetch user's uploaded elements
+    const fetchUserElements = async () => {
+        try {
+            const response = await fetch('/api/my-world/elements/user');
+            if (response.ok) {
+                const { elements } = await response.json();
+                if (elements) {
+                    setUploadedElements(elements);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to fetch user elements:', error);
+        }
+    };
 
     // Focus input when editing starts
     useEffect(() => {
@@ -134,17 +154,13 @@ export default function StorySet() {
     // Get all elements for the current category, marking which ones are selected
     const getAllCategoryElements = () => {
         const defaultCategoryElements = defaultElements[activeCategory] || [];
+        const userUploadedCategoryElements = uploadedElements.filter(el => el.category === activeCategory);
 
         // Create a map of selected elements for quick lookup
         const selectedElementsById = new Map();
         selectedElements.forEach(el => {
             selectedElementsById.set(el.id, el);
         });
-
-        // Add user-uploaded elements that aren't in defaultElements
-        const userUploadedElements = selectedElements.filter(
-            el => el.category === activeCategory && !el.isDefault
-        );
 
         // Combine all elements, avoiding duplicates and preserving updated name/description from selected elements
         const allElementIds = new Set();
@@ -165,12 +181,17 @@ export default function StorySet() {
             allElementIds.add(element.id);
         }
 
-        // Then add user-uploaded elements if they don't already exist
-        for (const element of userUploadedElements) {
+        // Then add user-uploaded elements
+        for (const element of userUploadedCategoryElements) {
             if (!allElementIds.has(element.id)) {
+                const selectedElement = selectedElementsById.get(element.id);
+                const isSelected = !!selectedElement;
+
                 combinedElements.push({
                     ...element,
-                    isSelected: true
+                    name: isSelected ? selectedElement.name : element.name,
+                    description: isSelected ? selectedElement.description : element.description,
+                    isSelected
                 });
                 allElementIds.add(element.id);
             }
@@ -210,7 +231,7 @@ export default function StorySet() {
 
         try {
             // Call API to update the name
-            const response = await fetch(`/api/my-world/elements/${detailElement.id}/update`, {
+            const response = await fetch(`/api/my-world/elements/${detailElement.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -222,7 +243,7 @@ export default function StorySet() {
                 throw new Error('Failed to save name');
             }
 
-            // Update UI state
+            // Update UI state for selected elements
             if (detailElement.isSelected) {
                 updateElementName(detailElement.id, editName);
             }
@@ -241,6 +262,12 @@ export default function StorySet() {
                         )
                     };
                 });
+            }
+            // Update uploaded elements if this was a user uploaded element
+            else {
+                setUploadedElements(prev =>
+                    prev.map(el => el.id === detailElement.id ? {...el, name: editName} : el)
+                );
             }
 
             toast.success("Name updated successfully");
@@ -264,7 +291,7 @@ export default function StorySet() {
 
         try {
             // Call API to update the description
-            const response = await fetch(`/api/my-world/elements/${detailElement.id}/update`, {
+            const response = await fetch(`/api/my-world/elements/${detailElement.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -276,7 +303,7 @@ export default function StorySet() {
                 throw new Error('Failed to save description');
             }
 
-            // Update UI state
+            // Update UI state for selected elements
             if (detailElement.isSelected) {
                 updateElementDescription(detailElement.id, editDescription);
             }
@@ -296,6 +323,12 @@ export default function StorySet() {
                     };
                 });
             }
+            // Update uploaded elements if this was a user uploaded element
+            else {
+                setUploadedElements(prev =>
+                    prev.map(el => el.id === detailElement.id ? {...el, description: editDescription} : el)
+                );
+            }
 
             toast.success("Description updated successfully");
         } catch (error) {
@@ -307,77 +340,55 @@ export default function StorySet() {
         }
     };
 
-    // Handle remove from story request
+    // Handle remove from world (permanent delete) request
     const handleRemoveFromStory = (id: string) => {
         setElementToDelete(id);
     };
 
-    // Handle permanent delete request
-    const handlePermanentDelete = (id: string) => {
-        setElementToPermaDelete(id);
-    };
+    // Confirm permanent deletion
+    const confirmPermanentDelete = async () => {
+        if (!elementToDelete) return;
+        setIsDeleting(true);
+        try {
+            // Call API to delete the element
+            const response = await fetch(`/api/my-world/elements/${elementToDelete}`, {
+                method: 'DELETE',
+            });
+            if (!response.ok) {
+                throw new Error('Failed to delete element');
+            }
 
-    // Confirm removal from story
-    const confirmRemoveFromStory = () => {
-        if (elementToDelete) {
-            removeElement(elementToDelete);
-            setElementToDelete(null);
+            // Remove element from selected elements if it was selected
+            if (selectedElements.some(el => el.id === elementToDelete)) {
+                removeElement(elementToDelete);
+            }
 
-            // If removing from the detail dialog, close it too
+            // Remove element from default elements if it was a default element
+            setDefaultElements(prev => {
+                const newElementsByCategory = { ...prev };
+                Object.keys(newElementsByCategory).forEach(category => {
+                    newElementsByCategory[category as ElementCategory] =
+                        newElementsByCategory[category as ElementCategory]
+                            .filter(el => el.id !== elementToDelete);
+                });
+                return newElementsByCategory;
+            });
+
+            // Remove from uploaded elements
+            setUploadedElements(prev => prev.filter(el => el.id !== elementToDelete));
+
+            // Close the dialog if the deleted element was the one being viewed
             if (detailElement && detailElement.id === elementToDelete) {
                 setDetailElement(null);
             }
 
-            toast.success("Element removed from story");
-        }
-    };
-
-    // Confirm permanent deletion
-    const confirmPermanentDelete = async () => {
-        if (elementToPermaDelete) {
-            setIsDeleting(true);
-
-            try {
-                // Call API to delete the element
-                const response = await fetch(`/api/my-world/elements/${elementToPermaDelete}`, {
-                    method: 'DELETE',
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to delete element');
-                }
-
-                // Remove element from selected elements if it was selected
-                if (selectedElements.some(el => el.id === elementToPermaDelete)) {
-                    removeElement(elementToPermaDelete);
-                }
-
-                // Remove element from default elements if it was a default element
-                setDefaultElements(prev => {
-                    const newElementsByCategory = {...prev};
-
-                    Object.keys(newElementsByCategory).forEach(category => {
-                        newElementsByCategory[category as ElementCategory] =
-                            newElementsByCategory[category as ElementCategory]
-                                .filter(el => el.id !== elementToPermaDelete);
-                    });
-
-                    return newElementsByCategory;
-                });
-
-                // Close the dialog if the deleted element was the one being viewed
-                if (detailElement && detailElement.id === elementToPermaDelete) {
-                    setDetailElement(null);
-                }
-
-                toast.success("Element permanently deleted");
-            } catch (error) {
-                console.error('Error deleting element:', error);
-                toast.error("Failed to delete element");
-            } finally {
-                setIsDeleting(false);
-                setElementToPermaDelete(null);
-            }
+            toast.success("Element permanently deleted");
+        } catch (error) {
+            console.error('Error deleting element:', error);
+            toast.error("Failed to delete element");
+        } finally {
+            setIsDeleting(false);
+            setElementToDelete(null);
         }
     };
 
@@ -386,7 +397,12 @@ export default function StorySet() {
         if (!file) return;
 
         try {
-            await addUploadedImage(file, activeCategory);
+            // This function adds the uploaded image to selectedElements after processing
+            const newElement = await addUploadedImage(file, activeCategory);
+            if (newElement) {
+                // Also add to our local uploaded elements state so it remains visible if deselected
+                setUploadedElements(prev => [...prev, newElement]);
+            }
         } catch (error) {
             console.error("Upload and analysis failed:", error);
         }
@@ -399,6 +415,13 @@ export default function StorySet() {
                 .then(({ element }) => {
                     if (element) {
                         addElement({...element, isSelected: true});
+                        // Also add to uploaded elements if it's not already there
+                        setUploadedElements(prev => {
+                            if (!prev.some(el => el.id === element.id)) {
+                                return [...prev, element];
+                            }
+                            return prev;
+                        });
                     }
                     acknowledgeRecognizedCharacter();
                 })
@@ -419,7 +442,7 @@ export default function StorySet() {
 
     return (
         <div className="flex flex-col flex-1 px-4 pb-6">
-            <h1 className="text-3xl font-bold mb-2">Build your Story Set</h1>
+            <h1 className="text-3xl font-bold mb-2">Build Your World</h1>
             <p className="text-gray-600 mb-6">
                 Choose characters, pets, places, and objects to bring your story to life.
                 You can also upload photos to add new elements.
@@ -508,7 +531,7 @@ export default function StorySet() {
             {/* Upload Button */}
             <label className={cn(
                 "flex items-center justify-center py-4 bg-white border border-gray-300 rounded-lg cursor-pointer mb-8 hover:bg-gray-50 transition-colors",
-                isAnalyzingImage && "opacity-50 cursor-wait"
+                isAnalyzingImage ? "opacity-90 cursor-wait relative overflow-hidden" : ""
             )}>
                 <input
                     type="file"
@@ -517,16 +540,31 @@ export default function StorySet() {
                     className="hidden"
                     disabled={isAnalyzingImage}
                 />
-                <span className="text-lg font-medium">
-                    {isAnalyzingImage ? 'Analyzing Image...' : 'Upload New Photos'}
+                <span className={cn(
+                    "text-lg font-medium flex items-center justify-center",
+                    isAnalyzingImage && "relative z-10"
+                )}>
+                {isAnalyzingImage ? (
+                    <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Analyzing Image...
+                    </>
+                ) : (
+                    'Upload New Photos'
+                )}
                 </span>
+
+                {/* Animated background for analyzing state */}
+                {isAnalyzingImage && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-100 via-blue-300 to-blue-100 animate-gradient-x" />
+                )}
             </label>
 
             {/* Continue Button - Black button with white text */}
             <Button
                 onClick={goToNextStep}
                 disabled={isAnalyzingImage}
-                className="w-full py-5 bg-[#212121] text-white rounded-lg text-lg font-medium hover:bg-black/90 transition-colors"
+                className="w-full py-6 bg-[#212121] text-white rounded-lg text-lg font-medium hover:bg-black/90 transition-colors"
             >
                 Add and continue
             </Button>
@@ -682,26 +720,16 @@ export default function StorySet() {
                             </div>
                         </div>
 
-                        <DialogFooter className="flex flex-col space-y-3">
-                            {/* Always show Remove from story button */}
-                            <button
+                        <DialogFooter className="flex justify-end space-x-3 mt-4">
+                            {/* Delete from My World permanently button */}
+                            <Button
+                                variant="destructive"
                                 onClick={() => handleRemoveFromStory(detailElement.id)}
-                                className="flex items-center justify-center space-x-2 w-full py-2.5 rounded-md border border-red-200 text-red-700 hover:bg-red-50 transition-colors"
+                                className="bg-red-600 hover:bg-red-700"
                             >
                                 <Trash2 className="h-5 w-5 mr-2" />
-                                <span>Remove from story</span>
-                            </button>
-
-                            {/* Optional: Delete from My World permanently button */}
-                            {!detailElement.isDefault && (
-                                <button
-                                    onClick={() => handlePermanentDelete(detailElement.id)}
-                                    className="flex items-center justify-center space-x-2 w-full py-2.5 rounded-md border border-red-400 bg-red-50 text-red-800 hover:bg-red-100 transition-colors"
-                                >
-                                    <Trash2 className="h-5 w-5 mr-2" />
-                                    <span>Delete from My World permanently</span>
-                                </button>
-                            )}
+                                Remove from World
+                            </Button>
 
                             <DialogClose asChild>
                                 <Button className="bg-blue-600 hover:bg-blue-700">
@@ -713,26 +741,8 @@ export default function StorySet() {
                 </Dialog>
             )}
 
-            {/* Remove from Story Confirmation Dialog */}
-            <AlertDialog open={!!elementToDelete} onOpenChange={(open) => !open && setElementToDelete(null)}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Remove from story?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Are you sure you want to remove this element from your story? This action won't delete it from your library.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmRemoveFromStory} className="bg-red-600 hover:bg-red-700">
-                            Remove
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-
-            {/* Permanent Delete Confirmation Dialog */}
-            <AlertDialog open={!!elementToPermaDelete} onOpenChange={(open) => !open && setElementToPermaDelete(null)}>
+            {/* Remove from World Confirmation Dialog (for permanent delete) */}
+            <AlertDialog open={isDeleting || !!elementToDelete} onOpenChange={(open) => !open && setElementToDelete(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete permanently?</AlertDialogTitle>

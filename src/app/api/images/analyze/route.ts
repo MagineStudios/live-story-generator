@@ -142,16 +142,16 @@ export async function POST(req: NextRequest) {
 function getPromptForCategory(category: ElementCategory): string {
     switch (category) {
         case ElementCategory.CHARACTER:
-            return "Describe this character in under 50 words, focusing exclusively on precise visual details like: age, face, hair, clothing, expression, and one distinctive feature. Do not include speculation about personality traits, life story, or non-visual characteristics. Just provide objective visual details. Format as a single paragraph.";
+            return "Describe this character in under 50 words, focusing exclusively on precise visual details like: age, ethnicity, face, skin color, hair color, hair style, weight, eye color, clothing, and one distinctive feature. Do not include speculation about personality traits, life story, or non-visual characteristics. Just provide objective visual details. Format as a single paragraph. Don't say the character appears to be. Just describe.";
 
         case ElementCategory.PET:
-            return "Describe this animal/pet in under 50 words, focusing exclusively on precise visual details like: species, breed, size, color, markings, fur/feathers, and one distinctive feature. Do not include personality traits or narrative elements. Just provide objective visual details. Format as a single paragraph.";
+            return "Describe this animal/pet in under 50 words, focusing exclusively on precise visual details like: species, breed, size, color, eye color, markings, fur/feathers, fur color, and one distinctive feature. Do not include personality traits or narrative elements. Just provide objective visual details. Format as a single paragraph. Don't say appears to be. Just describe.";
 
         case ElementCategory.LOCATION:
-            return "Describe this location in under 50 words, focusing exclusively on precise visual details like: environment type, key structures, colors, lighting, atmosphere, and one distinctive feature. Do not include historical context or non-visual elements. Just provide objective visual details. Format as a single paragraph.";
+            return "Describe this location in under 50 words, focusing exclusively on precise visual details like: environment type, key structures, colors, lighting, atmosphere, and one distinctive feature. Do not include historical context or non-visual elements. Just provide objective visual details. Format as a single paragraph. Don't say appears to be. Just describe.";
 
         case ElementCategory.OBJECT:
-            return "Describe this object in under 50 words, focusing exclusively on precise visual details like: what it is, size, shape, color, material, condition, and one distinctive feature. Do not include history, function, or non-visual characteristics. Just provide objective visual details. Format as a single paragraph.";
+            return "Describe this object in under 50 words, focusing exclusively on precise visual details like: what it is, size, shape, color, material, condition, and one distinctive feature. If the character is known or recognizable, mention the name. Do not include history, function, or non-visual characteristics. Just provide objective visual details. Format as a single paragraph. Don't say appears to be. Just describe.";
 
         default:
             return "Provide a precise, objective visual description of what you see in under 50 words. Focus only on physical, visual details. Avoid speculation about non-visual characteristics. Format as a single paragraph.";
