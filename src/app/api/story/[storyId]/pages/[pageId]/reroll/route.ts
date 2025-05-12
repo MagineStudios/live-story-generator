@@ -3,16 +3,15 @@ import { auth } from '@clerk/nextjs/server';
 import prisma from '@/lib/prisma';
 
 export async function POST(
-    req: NextRequest,
-    { params }: { params: { storyId: string; pageId: string } }
+  req: NextRequest,
+  context: any
 ) {
+    const { storyId, pageId } = context.params as { storyId: string; pageId: string };
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
-
-        const { storyId, pageId } = params;
 
         // Check if the story exists and belongs to the user
         const story = await prisma.story.findUnique({

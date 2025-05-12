@@ -2,17 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 
-export async function PUT(
-    req: NextRequest,
-    { params }: { params: { storyId: string; pageId: string } }
-) {
+export async function PUT(req: NextRequest, context: any) {
+    const { storyId, pageId } = context.params as { storyId: string; pageId: string };
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { storyId, pageId } = params;
         const { text } = await req.json();
 
         // Check if the story exists and belongs to the user

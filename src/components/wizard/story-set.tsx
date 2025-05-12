@@ -15,6 +15,14 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 
+// Type for default elements returned by the API
+type DefaultElement = {
+  id: string;
+  name: string;
+  imageUrl: string;
+  category: ElementCategory;
+};
+
 export default function StorySet() {
     const {
         selectedElements,
@@ -29,7 +37,7 @@ export default function StorySet() {
     } = useStoryBuilder();
 
     const [activeCategory, setActiveCategory] = useState<ElementCategory>(ElementCategory.CHARACTER);
-    const [defaultElements, setDefaultElements] = useState<Record<ElementCategory, any[]>>({
+    const [defaultElements, setDefaultElements] = useState<Record<ElementCategory, DefaultElement[]>>({
         [ElementCategory.CHARACTER]: [],
         [ElementCategory.PET]: [],
         [ElementCategory.LOCATION]: [],
@@ -44,17 +52,17 @@ export default function StorySet() {
             try {
                 const response = await fetch('/api/my-world/defaults');
                 if (response.ok) {
-                    const data = await response.json();
+                    const json = (await response.json()) as { elements: DefaultElement[] };
 
                     // Organize elements by category
-                    const elementsByCategory: Record<ElementCategory, any[]> = {
+                    const elementsByCategory: Record<ElementCategory, DefaultElement[]> = {
                         [ElementCategory.CHARACTER]: [],
                         [ElementCategory.PET]: [],
                         [ElementCategory.LOCATION]: [],
                         [ElementCategory.OBJECT]: [],
                     };
 
-                    data.elements.forEach((el: any) => {
+                    json.elements.forEach((el) => {
                         elementsByCategory[el.category].push(el);
                     });
 

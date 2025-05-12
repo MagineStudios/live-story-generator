@@ -18,15 +18,15 @@ export const dynamic = 'force-dynamic';
 // Updated type signature for Next.js 15
 export async function POST(
     req: NextRequest,
-    context: { params: { storyId: string } }
+    context: any
 ) {
+    const { storyId } = (context.params as { storyId: string });
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { storyId } = context.params;
 
         // Rest of your function remains the same
         // Check if the story exists and belongs to the user

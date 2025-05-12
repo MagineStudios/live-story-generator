@@ -8,17 +8,13 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function POST(
-    req: NextRequest,
-    { params }: { params: { storyId: string; pageId: string } }
-) {
+export async function POST(req: NextRequest, context: any) {
+    const { storyId, pageId } = (context.params as { storyId: string; pageId: string });
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
-
-        const { storyId, pageId } = params;
         const { name, category = ElementCategory.CHARACTER } = await req.json() || {};
 
         // Check if the story exists and belongs to the user
