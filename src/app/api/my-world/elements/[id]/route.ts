@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, context: any) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
-        return NextResponse.json(element);
+        return NextResponse.json({ element });
     } catch (error: any) {
         console.error('Error fetching element:', error);
         return NextResponse.json(
@@ -67,7 +67,7 @@ export async function PUT(req: NextRequest, context: any) {
             }
         });
 
-        return NextResponse.json(updatedElement);
+        return NextResponse.json({ element: updatedElement });
     } catch (error: any) {
         console.error('Error updating element:', error);
         return NextResponse.json(

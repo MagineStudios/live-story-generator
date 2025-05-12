@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { useStoryBuilder } from '@/lib/context/story-builder-context';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Info, Loader2 } from 'lucide-react';
+import { Info, Loader2, X, AlertTriangle } from 'lucide-react';
 import { ElementCategory } from '@prisma/client';
 import {
     Dialog,
@@ -14,6 +14,16 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Type for default elements returned by the API
 type DefaultElement = {
@@ -45,6 +55,8 @@ export default function StorySet() {
     });
 
     const [isLoading, setIsLoading] = useState(true);
+    const [elementToDelete, setElementToDelete] = useState<string | null>(null);
+    const [hoveredElement, setHoveredElement] = useState<string | null>(null);
 
     // Fetch default elements on component mount
     useEffect(() => {
@@ -95,9 +107,20 @@ export default function StorySet() {
     const toggle = (el: any) => {
         const isSelected = selectedElements.find(e => e.id === el.id);
         if (isSelected) {
-            removeElement(el.id);
+            setElementToDelete(el.id);
         } else {
             addElement({...el, isSelected: true});
+        }
+    };
+
+    const handleDelete = (id: string) => {
+        setElementToDelete(id);
+    };
+
+    const confirmDelete = () => {
+        if (elementToDelete) {
+            removeElement(elementToDelete);
+            setElementToDelete(null);
         }
     };
 
@@ -114,7 +137,7 @@ export default function StorySet() {
 
     const handleAddRecognizedCharacter = () => {
         if (recognizedCharacter) {
-            fetch(`/api/my-world/elements?id=${recognizedCharacter.id}`)
+            fetch(`/api/my-world/elements/${recognizedCharacter.id}`)
                 .then(res => res.json())
                 .then(({ element }) => {
                     if (element) {
@@ -152,10 +175,10 @@ export default function StorySet() {
                         key={category}
                         onClick={() => setActiveCategory(category)}
                         className={cn(
-                            "px-6 py-2.5 rounded-full text-sm font-medium whitespace-nowrap",
+                            "px-6 py-2.5 rounded-full text-sm font-medium whitespace-nowrap transition-all",
                             activeCategory === category
-                                ? "bg-[#212121] text-white"
-                                : "bg-gray-100 text-gray-800"
+                                ? "bg-[#212121] text-white shadow-md"
+                                : "bg-gray-100 text-gray-800 hover:bg-gray-200"
                         )}
                     >
                         {getCategoryLabel(category)}
@@ -168,7 +191,7 @@ export default function StorySet() {
                 <div className="text-lg font-medium">Add {getCategoryLabel(activeCategory)}</div>
                 <button
                     onClick={clearAllElements}
-                    className="text-sm text-gray-600"
+                    className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
                 >
                     Clear All
                 </button>
@@ -182,18 +205,41 @@ export default function StorySet() {
                         <div
                             key={item.id}
                             onClick={() => toggle(item)}
+                            onMouseEnter={() => isSelected && setHoveredElement(item.id)}
+                            onMouseLeave={() => setHoveredElement(null)}
                             className={cn(
-                                "aspect-square bg-gray-100 rounded-lg flex flex-col items-center justify-center cursor-pointer p-4",
-                                isSelected ? "ring-2 ring-blue-500" : ""
+                                "aspect-square bg-gray-100 rounded-lg cursor-pointer overflow-hidden relative group",
+                                isSelected ? "ring-2 ring-blue-500 shadow-md" : "hover:ring-2 hover:ring-gray-300"
                             )}
                         >
-                            <Image
-                                src={item.imageUrl}
-                                alt={item.name}
-                                width={48}
-                                height={48}
-                                className="mb-2"
-                            />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <Image
+                                    src={item.imageUrl}
+                                    alt={item.name}
+                                    fill
+                                    sizes="(max-width: 768px) 33vw, 20vw"
+                                    className="object-cover object-center"
+                                />
+                                <div className={cn(
+                                    "absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 transition-opacity",
+                                    isSelected ? "opacity-100" : "group-hover:opacity-70"
+                                )}></div>
+                                <span className="absolute bottom-2 left-2 text-white font-medium text-sm truncate max-w-[80%]">
+                                    {item.name}
+                                </span>
+                            </div>
+
+                            {isSelected && (
+                                <div
+                                    className="absolute top-2 right-2 p-1 bg-white/80 rounded-full shadow-md opacity-0 group-hover:opacity-100 hover:bg-white transition-all"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDelete(item.id);
+                                    }}
+                                >
+                                    <X className="h-4 w-4 text-gray-700" />
+                                </div>
+                            )}
                         </div>
                     );
                 })}
@@ -204,16 +250,33 @@ export default function StorySet() {
                     .map(item => (
                         <div
                             key={item.id}
-                            onClick={() => removeElement(item.id)}
-                            className="aspect-square bg-gray-100 rounded-lg flex flex-col items-center justify-center cursor-pointer p-4 ring-2 ring-blue-500"
+                            onMouseEnter={() => setHoveredElement(item.id)}
+                            onMouseLeave={() => setHoveredElement(null)}
+                            className="aspect-square bg-gray-100 rounded-lg relative overflow-hidden group ring-2 ring-blue-500 shadow-md"
                         >
-                            <Image
-                                src={item.imageUrl}
-                                alt={item.name}
-                                width={48}
-                                height={48}
-                                className="mb-2"
-                            />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <Image
+                                    src={item.imageUrl}
+                                    alt={item.name}
+                                    fill
+                                    sizes="(max-width: 768px) 33vw, 20vw"
+                                    className="object-cover object-center"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                                <span className="absolute bottom-2 left-2 text-white font-medium text-sm truncate max-w-[80%]">
+                                    {item.name}
+                                </span>
+                            </div>
+
+                            <div
+                                className="absolute top-2 right-2 p-1 bg-white/80 rounded-full shadow-md opacity-0 group-hover:opacity-100 hover:bg-white transition-all"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDelete(item.id);
+                                }}
+                            >
+                                <X className="h-4 w-4 text-gray-700" />
+                            </div>
                         </div>
                     ))}
             </div>
@@ -228,7 +291,7 @@ export default function StorySet() {
 
             {/* Upload Button */}
             <label className={cn(
-                "flex items-center justify-center py-4 bg-white border border-gray-300 rounded-lg cursor-pointer mb-8 hover:bg-gray-50",
+                "flex items-center justify-center py-4 bg-white border border-gray-300 rounded-lg cursor-pointer mb-8 hover:bg-gray-50 transition-colors",
                 isAnalyzingImage && "opacity-50 cursor-wait"
             )}>
                 <input
@@ -247,7 +310,7 @@ export default function StorySet() {
             <Button
                 onClick={goToNextStep}
                 disabled={isAnalyzingImage}
-                className="w-full py-5 bg-[#212121] text-white rounded-lg text-lg font-medium"
+                className="w-full py-5 bg-[#212121] text-white rounded-lg text-lg font-medium hover:bg-black/90 transition-colors"
             >
                 Add and continue
             </Button>
@@ -263,13 +326,14 @@ export default function StorySet() {
                             </DialogDescription>
                         </DialogHeader>
                         <div className="flex items-center space-x-4 py-4">
-                            <Image
-                                src={recognizedCharacter.imageUrl}
-                                alt={recognizedCharacter.name}
-                                width={80}
-                                height={80}
-                                className="rounded-lg"
-                            />
+                            <div className="relative w-20 h-20 rounded-lg overflow-hidden">
+                                <Image
+                                    src={recognizedCharacter.imageUrl}
+                                    alt={recognizedCharacter.name}
+                                    fill
+                                    className="object-cover"
+                                />
+                            </div>
                             <div>
                                 <h4 className="font-medium mb-1">{recognizedCharacter.name}</h4>
                                 <p className="text-sm text-gray-500">Would you like to add this character to your story?</p>
@@ -286,6 +350,24 @@ export default function StorySet() {
                     </DialogContent>
                 </Dialog>
             )}
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!elementToDelete} onOpenChange={(open) => !open && setElementToDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Remove from story?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to remove this element from your story? This action won't delete it from your library.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+                            Remove
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
