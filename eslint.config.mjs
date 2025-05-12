@@ -42,7 +42,10 @@ const eslintConfig = [
       "node_modules/**",
       "public/**",
       "dist/**",
-      "build/**"
+      "build/**",
+      "*.wasm.js",
+      "src/**/runtime/**",
+      "src/generated/**",
     ]
   }
 ];

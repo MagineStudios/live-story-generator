@@ -1,40 +1,128 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
-generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
-}
-
+// ---------- Providers ----------
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ---------- Enums ----------
+enum StoryStatus {
+  DRAFT
+  GENERATING
+  READY
+  CANCELLED
+}
+
+enum JobStatus {
+  SUBMITTED
+  PROCESSING
+  SUCCEED
+  FAILED
+}
+
+enum VideoQuality {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// ---------- Core tables ----------
 model User {
-  id      String  @id @default(uuid())
-  email   String  @unique
-  stories Story[]
+  id         String         @id // equals Clerk userId
+  credits    Int            @default(0)
+  createdAt  DateTime       @default(now())
+  stories    Story[]
+  images     ImageVariant[]
+  videoTasks VideoTask[]
+  musicTasks MusicTask[]
+  ledger     CreditLedger[]
 }
 
 model Story {
-  id        String      @id @default(uuid())
-  user      User        @relation(fields: [userId], references: [id])
-  userId    String
-  title     String
-  style     String
-  createdAt DateTime    @default(now())
-  pages     StoryPage[]
+  id          String      @id @default(cuid())
+  user        User        @relation(fields: [userId], references: [id])
+  userId      String
+  title       String
+  theme       String
+  visualStyle String
+  language    String      @default("en")
+  status      StoryStatus @default(DRAFT)
+  pdfUrl      String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  pages       StoryPage[]
+  videoTasks  VideoTask[] @relation("StoryVideoTasks")
+  musicTasks  MusicTask[] @relation("StoryMusicTasks")
 }
 
 model StoryPage {
-  id         String @id @default(uuid())
-  story      Story  @relation(fields: [storyId], references: [id], onDelete: Cascade)
-  storyId    String
-  pageNumber Int
-  text       String
-  imageUrl   String
+  id            String         @id @default(cuid())
+  story         Story          @relation(fields: [storyId], references: [id])
+  storyId       String
+  index         Int
+  text          String
+  chosenImageId String?        @unique
+  variants      ImageVariant[] @relation("PageVariants")
+  chosenImage   ImageVariant?  @relation("ChosenImage", fields: [chosenImageId], references: [id])
+  videoTasks    VideoTask[]    @relation("PageVideoTasks")
+}
+
+model ImageVariant {
+  id            String     @id @default(cuid())
+  page          StoryPage? @relation("PageVariants", fields: [pageId], references: [id])
+  pageId        String?
+  user          User       @relation(fields: [userId], references: [id])
+  userId        String
+  publicId      String
+  secureUrl     String
+  width         Int?
+  height        Int?
+  isChosen      Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  chosenForPage StoryPage? @relation("ChosenImage")
+}
+
+// ---------- Async job tables ----------
+model VideoTask {
+  /// Kling task-id or similar
+  id          String       @id
+  user        User         @relation(fields: [userId], references: [id])
+  userId      String
+  story       Story?       @relation("StoryVideoTasks", fields: [storyId], references: [id])
+  storyId     String?
+  page        StoryPage?   @relation("PageVideoTasks", fields: [pageId], references: [id])
+  pageId      String?
+  prompt      String
+  quality     VideoQuality @default(LOW)
+  status      JobStatus    @default(SUBMITTED)
+  videoUrl    String?
+  durationSec Int?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model MusicTask {
+  id        String    @id @default(cuid())
+  user      User      @relation(fields: [userId], references: [id])
+  userId    String
+  story     Story?    @relation("StoryMusicTasks", fields: [storyId], references: [id])
+  storyId   String?
+  prompt    String
+  status    JobStatus @default(SUBMITTED)
+  musicUrl  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+// ---------- Credits ----------
+model CreditLedger {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  delta     Int
+  reason    String
+  createdAt DateTime @default(now())
 }
