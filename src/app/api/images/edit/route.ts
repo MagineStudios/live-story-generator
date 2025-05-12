@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
       if ('url' in item && item.url) {
         console.log('Uploading via URL:', item.url);
         result = await cloudinary.uploader.upload(item.url, {
-          folder: 'live-story/edits',
+          folder: `live-story/users/${userId}/edits`,
           overwrite: true,
         });
       } else if ('b64_json' in item && item.b64_json) {
@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
         const buffer = Buffer.from(item.b64_json, 'base64');
         result = await new Promise<UploadApiResponse>((resolve, reject) => {
           const stream = cloudinary.uploader.upload_stream(
-              { folder: 'live-story/edits', overwrite: true },
+              { folder: `live-story/users/${userId}/edits`, overwrite: true },
               (err, res) => (err ? reject(err) : resolve(res as UploadApiResponse))
           );
           stream.end(buffer);
