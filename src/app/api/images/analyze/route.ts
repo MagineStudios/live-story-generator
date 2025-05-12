@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { imageUrl, category } = await req.json();
+        const { imageUrl, category, elementId } = await req.json();
 
         if (!imageUrl) {
             return NextResponse.json({ error: 'Missing imageUrl' }, { status: 400 });
@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
         }
 
         const prompt = getPromptForCategory(category, characterContext);
+        console.log("Analysis text prompt:", prompt);
 
         const response = await openai.chat.completions.create({
             model: "gpt-4.1",
@@ -69,6 +70,8 @@ export async function POST(req: NextRequest) {
         });
 
         const analysisText = response.choices[0].message.content || '';
+        console.log("Analysis text:", analysisText);
+        console.log("repsonse", response);
 
         // Check if this might be a recognized character
         let recognizedElementId = null;
@@ -99,11 +102,29 @@ export async function POST(req: NextRequest) {
             suggestedName = getCategoryDefaultName(category);
         }
 
+        // If we have an elementId, update the element with the description
+        if (elementId) {
+            try {
+                await prisma.myWorldElement.update({
+                    where: { id: elementId },
+                    data: {
+                        description: analysisText,
+                        name: suggestedName || getCategoryDefaultName(category)
+                    }
+                });
+                console.log(`Updated element ${elementId} with description`);
+            } catch (updateError) {
+                console.error('Failed to update element description:', updateError);
+                // Continue anyway to return the analysis
+            }
+        }
+
         return NextResponse.json({
             description: analysisText,
             recognizedElementId,
             suggestedName,
-            category
+            category,
+            elementId
         });
 
     } catch (error: any) {

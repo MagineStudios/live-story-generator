@@ -113,20 +113,25 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
             // First upload the image
             const uploadForm = new FormData();
             uploadForm.append('file', file);
+            uploadForm.append('category', category);
 
-            const uploadRes = await fetch('/api/upload', {
+            const uploadRes = await fetch('/api/images/upload', {
                 method: 'POST',
                 body: uploadForm
             });
 
             if (!uploadRes.ok) throw new Error('Failed to upload image');
-            const { url, publicId } = await uploadRes.json();
+            const { url, publicId, elementId } = await uploadRes.json();
 
             // Then analyze with GPT Vision
-            const analyzeRes = await fetch('/api/analyze-image', {
+            const analyzeRes = await fetch('/api/images/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ imageUrl: url, category }),
+                body: JSON.stringify({
+                    imageUrl: url,
+                    category,
+                    elementId // Pass the element ID for updating
+                }),
             });
 
             if (!analyzeRes.ok) throw new Error('Failed to analyze image');
@@ -135,7 +140,7 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
             // If this is a recognized character, set the recognition flag
             if (recognizedElementId && category === ElementCategory.CHARACTER) {
                 // Get the recognized element details
-                const response = await fetch(`/api/my-world/elements?id=${recognizedElementId}`);
+                const response = await fetch(`/api/my-world/elements/${recognizedElementId}`);
                 if (response.ok) {
                     const { element } = await response.json();
                     if (element) {
@@ -150,27 +155,20 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
                 }
             }
 
-            // Generate a temporary ID for client-side use
-            const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            // Now fetch the complete element that has been updated with the description
+            const elementRes = await fetch(`/api/my-world/elements/${elementId}`);
+            if (!elementRes.ok) throw new Error('Failed to get updated element');
+            const { element } = await elementRes.json();
 
-            // Create the new element with GPT-generated description
-            const newElement: MyWorldElement = {
-                id: tempId,
-                name: suggestedName || file.name.split('.')[0],
-                description: description || 'A custom element',
-                imageUrl: url,
-                publicId,
-                category,
-                isDefault: false,
-            };
+            if (element) {
+                // Add the updated element to the selected elements
+                addElement({
+                    ...element,
+                    isSelected: true
+                });
+            }
 
-            // Add to selected elements
-            addElement(newElement);
-
-            // Also save to database
-            await saveElementToDatabase(newElement);
-
-            return newElement;
+            return element;
         } catch (error) {
             console.error("Failed to process uploaded image:", error);
             throw error;
@@ -309,7 +307,7 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
     const rerollImage = async (pageId: string) => {
         try {
             // API call to regenerate the image for a specific page
-            const response = await fetch(`/api/story/reroll-image/${pageId}`, {
+            const response = await fetch(`/api/story/pages/${pageId}/reroll`, {
                 method: 'POST'
             });
 
@@ -324,7 +322,7 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
     const remixStoryPage = async (pageId: string, prompt: string) => {
         try {
             // API call to remix/update a page with additional prompting
-            const response = await fetch(`/api/story/remix-page/${pageId}`, {
+            const response = await fetch(`/api/story/pages/${pageId}/remix`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt })
@@ -341,7 +339,7 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
     const editStoryText = async (pageId: string, text: string) => {
         try {
             // API call to edit the text of a specific page
-            const response = await fetch(`/api/story/edit-text/${pageId}`, {
+            const response = await fetch(`/api/story/pages/${pageId}/edit`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text })
@@ -358,7 +356,7 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
     const saveImageToMyWorld = async (pageId: string) => {
         try {
             // API call to save an image from a story page to My World
-            const response = await fetch(`/api/story/save-to-my-world/${pageId}`, {
+            const response = await fetch(`/api/story/pages/${pageId}/save-to-my-world`, {
                 method: 'POST'
             });
 
@@ -376,7 +374,7 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
     const finalizeStory = async () => {
         try {
             // API call to finalize the story (e.g., generate PDF, prepare for print)
-            const response = await fetch(`/api/story/finalize/${generatedStoryId}`, {
+            const response = await fetch(`/api/story/${generatedStoryId}/finalize`, {
                 method: 'POST'
             });
 

@@ -17,10 +17,10 @@ import {
 
 // Type for default elements returned by the API
 type DefaultElement = {
-  id: string;
-  name: string;
-  imageUrl: string;
-  category: ElementCategory;
+    id: string;
+    name: string;
+    imageUrl: string;
+    category: ElementCategory;
 };
 
 export default function StorySet() {
@@ -78,8 +78,8 @@ export default function StorySet() {
         fetchDefaultElements();
     }, []);
 
-    const getCategoryLabel = () => {
-        switch (activeCategory) {
+    const getCategoryLabel = (category: ElementCategory) => {
+        switch (category) {
             case ElementCategory.CHARACTER: return 'Characters';
             case ElementCategory.PET: return 'Pets';
             case ElementCategory.LOCATION: return 'Locations';
@@ -158,14 +158,14 @@ export default function StorySet() {
                                 : "bg-gray-100 text-gray-800"
                         )}
                     >
-                        {getCategoryLabel()}
+                        {getCategoryLabel(category)}
                     </button>
                 ))}
             </div>
 
             {/* Action Header */}
             <div className="flex justify-between items-center mb-4">
-                <div className="text-lg font-medium">Add {getCategoryLabel()}</div>
+                <div className="text-lg font-medium">Add {getCategoryLabel(activeCategory)}</div>
                 <button
                     onClick={clearAllElements}
                     className="text-sm text-gray-600"
@@ -239,18 +239,18 @@ export default function StorySet() {
                     disabled={isAnalyzingImage}
                 />
                 <span className="text-lg font-medium">
-          {isAnalyzingImage ? 'Analyzing Image...' : 'Upload New Photos'}
-        </span>
+                    {isAnalyzingImage ? 'Analyzing Image...' : 'Upload New Photos'}
+                </span>
             </label>
 
             {/* Continue Button - Black button with white text */}
-            <button
+            <Button
                 onClick={goToNextStep}
                 disabled={isAnalyzingImage}
                 className="w-full py-5 bg-[#212121] text-white rounded-lg text-lg font-medium"
             >
                 Add and continue
-            </button>
+            </Button>
 
             {/* Character Recognition Dialog */}
             {recognizedCharacter && (

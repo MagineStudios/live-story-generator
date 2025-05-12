@@ -31,6 +31,23 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        // Validate that the user exists in our database
+        const userExists = await prisma.user.findUnique({
+            where: { id: userId },
+        });
+
+        if (!userExists) {
+            console.error(`User with ID ${userId} not found in the database`);
+            // Create the user if they don't exist
+            await prisma.user.create({
+                data: {
+                    id: userId,
+                    // Set default values as needed
+                }
+            });
+            console.log(`Created user with ID ${userId} in the database`);
+        }
+
         // Parse form data
         const formData = await req.formData();
         const file = formData.get('file') as File | null;
@@ -39,7 +56,11 @@ export async function POST(req: NextRequest) {
 
         const category = categoryRaw ?
             (Object.values(ElementCategory).includes(categoryRaw as ElementCategory) ?
-                categoryRaw as ElementCategory : ElementCategory.CHARACTER) :
+                categoryRaw as ElementCategory :
+                // Check if the category string exists in a case-insensitive manner
+                Object.values(ElementCategory).find(c =>
+                    c.toLowerCase() === categoryRaw.toLowerCase()
+                ) as ElementCategory || ElementCategory.CHARACTER) :
             ElementCategory.CHARACTER;
 
         if (!file) {
@@ -72,8 +93,9 @@ export async function POST(req: NextRequest) {
             bufferToStream(buffer).pipe(uploadStream);
         });
 
+        console.log('Cloudinary upload successful, creating DB record with userId:', userId);
+
         // After successful upload to Cloudinary, save as a MyWorldElement in the database
-        // Note: We don't save to ImageVariant here as that's only for story page images
         const element = await prisma.myWorldElement.create({
             data: {
                 name: name || `My ${category.toLowerCase()}`,
