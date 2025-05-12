@@ -45,8 +45,7 @@ interface StoryBuilderState {
     addElement: (el: MyWorldElement) => void;
     removeElement: (id: string) => void;
     clearAllElements: () => void;
-    addUploadedImage: (file: File, category: ElementCategory) => Promise<void>;
-    updateElementDescription: (id: string, description: string) => void;
+    addUploadedImage: (file: File, category: ElementCategory) => Promise<MyWorldElement | undefined>;    updateElementDescription: (id: string, description: string) => void;
     setVisualStyle: (style: VisualStyle) => void;
     setThemePrompt: (prompt: string) => void;
     goToNextStep: () => void;
