@@ -2,22 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 
-export async function GET(
-    req: NextRequest,
-    context: { params: Promise<{ id: string }> | { id: string } }
-) {
+export async function GET(req: NextRequest) {
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Handle params as a potential Promise
-        const params = 'then' in context.params
-            ? await context.params
-            : context.params;
-
-        const id = params.id;
+        // Get the id from query parameters
+        const id = req.nextUrl.searchParams.get('id');
+        if (!id) {
+            return NextResponse.json({ error: 'Missing id parameter' }, { status: 400 });
+        }
 
         // Get the specific element
         const element = await prisma.myWorldElement.findUnique({
