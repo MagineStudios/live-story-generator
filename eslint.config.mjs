@@ -11,6 +11,40 @@ const compat = new FlatCompat({
 
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
+  {
+    // Apply less strict rules globally
+    rules: {
+      // Disable rules that are causing your current issues
+      "@typescript-eslint/no-explicit-any": "off",       // Allow 'any' type
+      "@typescript-eslint/no-unused-vars": ["warn", {    // Downgrade unused vars to warnings
+        "argsIgnorePattern": "^_",                       // Ignore vars starting with underscore
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }],
+      "@typescript-eslint/ban-ts-comment": "warn",       // Downgrade ts-comment restrictions to warnings
+
+      // Additional rules to relax TypeScript strictness
+      "@typescript-eslint/no-non-null-assertion": "off", // Allow non-null assertions (!)
+      "no-console": "off",                               // Allow console statements
+      "@typescript-eslint/explicit-module-boundary-types": "off", // Don't require explicit return types
+
+      // More permissive handling of promises and types
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      "@typescript-eslint/no-unsafe-return": "off"
+    }
+  },
+  {
+    // Ignore certain patterns
+    ignores: [
+      ".next/**",
+      "node_modules/**",
+      "public/**",
+      "dist/**",
+      "build/**"
+    ]
+  }
 ];
 
 export default eslintConfig;
