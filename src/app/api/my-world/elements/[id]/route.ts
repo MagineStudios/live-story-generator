@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 
-export async function GET(
+export const GET = async (
     req: NextRequest,
-    { params }: { params: { id: string } }
-) {
+    context: { params: { id: string } }
+) => {
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const id = params.id;
+        const id = context.params.id;
 
         // Get the specific element
         const element = await prisma.myWorldElement.findUnique({
@@ -36,19 +36,19 @@ export async function GET(
             { status: 500 }
         );
     }
-}
+};
 
-export async function PUT(
+export const PUT = async (
     req: NextRequest,
-    { params }: { params: { id: string } }
-) {
+    context: { params: { id: string } }
+) => {
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const id = params.id;
+        const id = context.params.id;
         const { name, description } = await req.json();
 
         // Check if the element exists and belongs to the user
@@ -81,19 +81,19 @@ export async function PUT(
             { status: 500 }
         );
     }
-}
+};
 
-export async function DELETE(
+export const DELETE = async (
     req: NextRequest,
-    { params }: { params: { id: string } }
-) {
+    context: { params: { id: string } }
+) => {
     try {
         const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const id = params.id;
+        const id = context.params.id;
 
         // Check if the element exists and belongs to the user
         const element = await prisma.myWorldElement.findUnique({
@@ -121,4 +121,4 @@ export async function DELETE(
             { status: 500 }
         );
     }
-}
+};
