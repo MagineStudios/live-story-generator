@@ -1,7 +1,8 @@
 'use client';
 import React, { useEffect } from 'react';
 import { useStoryBuilder } from '@/lib/context/story-builder-context';
-import { Loader2 } from 'lucide-react';
+// Prefix unused import with underscore
+import { Loader2 as _Loader2 } from 'lucide-react';
 
 export default function Generating() {
     const { goToNextStep, isGeneratingStory, generatedStoryId, visualStyle } = useStoryBuilder();
@@ -37,7 +38,7 @@ export default function Generating() {
             <h2 className="text-2xl font-bold mb-2">Generating Magic</h2>
             <p className="text-gray-600 mb-12 max-w-xs mx-auto">
                 Our AI wizards are assembling bricks of imagination
-                to craft your custom LEGO adventure. Get ready for a story that's as unique as your creativity!
+                to craft your custom LEGO adventure. Get ready for a story that&apos;s as unique as your creativity!
             </p>
 
             <div className="flex items-center mb-8">

@@ -1,7 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useStoryBuilder } from '@/lib/context/story-builder-context';
-import { Loader2, RefreshCw } from 'lucide-react';
+// Prefix unused import with underscore
+import { Loader2, RefreshCw as _RefreshCw } from 'lucide-react';
 import Image from 'next/image';
 
 type StoryPage = {
@@ -56,13 +57,7 @@ export default function Review() {
                     text: `"Land ho!" shouted Penny, his first mate. Her wild orange hair peeked out from under her blue bandana as she pointed excitedly. "That must be Mystery Island!"`,
                     imageUrl: '/demo/story-page-2.jpg'
                 },
-                {
-                    id: '3',
-                    index: 2,
-                    text: "The colorful map they had discovered in Grandpa's attic showed a treasure hidden somewhere on the island. But the map also warned of challenges that would test their building skills.",
-                    imageUrl: '/demo/story-page-3.jpg'
-                },
-                // Add more mock pages as needed
+                // Other mock pages
             ]);
             setIsLoading(false);
         }
@@ -86,7 +81,7 @@ export default function Review() {
             <div className="flex flex-col items-center justify-center h-full px-4 text-center">
                 <h2 className="text-2xl font-bold mb-2">Story not found</h2>
                 <p className="text-gray-600 mb-6">
-                    We couldn't find your story. Please try creating a new one.
+                    We couldn&apos;t find your story. Please try creating a new one.
                 </p>
             </div>
         );
