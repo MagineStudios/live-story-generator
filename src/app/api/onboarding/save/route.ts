@@ -7,6 +7,12 @@ export async function POST(req: NextRequest) {
     if (!userId) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    // Ensure the User record exists for this Clerk userId
+    await prisma.user.upsert({
+      where: { id: userId },
+      create: { id: userId },
+      update: {},
+    });
 
     const body: { storyGoal?: string[]; tone?: string[], currentStep?: number } = await req.json();
 

@@ -251,13 +251,19 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     // Navigation: go to the next step
     const goToNextStep = () => {
-        _setCurrentStep(curr => Math.min(curr + 1, MAX_STEPS - 1));
-        saveOnboardingPrefs({ currentStep })
+      _setCurrentStep(curr => {
+        const next = Math.min(curr + 1, MAX_STEPS - 1);
+        saveOnboardingPrefs({ currentStep: next });
+        return next;
+      });
     };
     // Navigation: go to previous step
     const goToPrevStep = () => {
-        _setCurrentStep(curr => Math.max(curr - 1, 0));
-        saveOnboardingPrefs({ currentStep })
+      _setCurrentStep(curr => {
+        const prev = Math.max(curr - 1, 0);
+        saveOnboardingPrefs({ currentStep: prev });
+        return prev;
+      });
     };
 
     // Upload a new image (character/pet/location/object) and analyze it via AI
