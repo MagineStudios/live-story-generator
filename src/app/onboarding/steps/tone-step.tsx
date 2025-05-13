@@ -1,158 +1,173 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
-import { Smile, Compass, Heart, Eye, Moon, BookOpen, Square, CheckSquare } from 'lucide-react';
+import { Laugh, Heart, Star, Sparkles, BookOpen, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SpeechBubble } from './speech-bubble';
+import { motion } from 'framer-motion';
 
 const TONE_OPTIONS = [
-  { value: 'Funny', label: 'Funny & Playful', Icon: Smile },
-  { value: 'Adventure', label: 'Adventurous & Exciting', Icon: Compass },
-  { value: 'Heartwarming', label: 'Heartwarming & Sweet', Icon: Heart },
-  { value: 'Mystery', label: 'Mysterious & Surprising', Icon: Eye },
-  { value: 'Inspirational', label: 'Inspiring & Uplifting', Icon: Smile },
-  { value: 'Relaxing', label: 'Calming & Relaxing', Icon: Moon },
-  { value: 'Creative', label: 'Imaginative & Creative', Icon: BookOpen },
+  { value: 'Funny', label: 'Funny & Silly', Icon: Laugh, color: 'bg-yellow-100 text-yellow-600' },
+  { value: 'Heartwarming', label: 'Heartwarming', Icon: Heart, color: 'bg-red-100 text-red-500' },
+  { value: 'Magical', label: 'Magical', Icon: Star, color: 'bg-purple-100 text-purple-600' },
+  { value: 'Whimsical', label: 'Whimsical', Icon: Sparkles, color: 'bg-blue-100 text-blue-500' },
+  { value: 'Educational', label: 'Educational', Icon: BookOpen, color: 'bg-green-100 text-green-600' },
+  { value: 'Action', label: 'Action-packed', Icon: Zap, color: 'bg-orange-100 text-orange-500' }
 ];
 
 export function ToneStep() {
-  const { tone, setTone, goToNextStep, goToPrevStep, currentStep } = useOnboarding();
-  const [selectedTones, setSelectedTones] = useState<string[]>(tone ? [...tone] : []);
+  const { tone, setTone, goToNextStep } = useOnboarding();
+  const [selectedTones, setSelectedTones] = useState<string[]>(tone || []);
 
-  const fallback = "How do you want your child to feel when experiencing this story? Choose below!";
-
+  const fallback = "What tone should the story have?";
   const [displayedText, setDisplayedText] = useState('');
-  const isFirstLoadRef = useRef(true);
+  const isFirstEntryRef = useRef(true);
   const animationRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (tone) {
-      setSelectedTones(Array.isArray(tone) ? tone : [tone]);
+    if (tone && tone.length > 0 && selectedTones.length === 0) {
+      setSelectedTones(tone);
     }
-  }, [tone]);
+  }, [tone, selectedTones]);
 
-  const questionMap: Record<string, string> = {
-    Funny: "Ready to spark joy and laughter? Let's have some fun!",
-    Adventure: "Buckle up! Let's take your child on an unforgettable adventure!",
-    Heartwarming: "Beautiful choice! Prepare for cozy and heartwarming moments!",
-    Mystery: "Exciting! A thrilling mystery awaits your little detective!",
-    Inspirational: "Great pick! Time to inspire your child with uplifting stories!",
-    Relaxing: "Lovely! Let's create a soothing and relaxing experience!",
-    Creative: "Fantastic! Get ready to unlock creativity and imagination!",
+  const toneMap: Record<string, string> = {
+    'Funny': "Perfect! We'll make your story silly and fun!",
+    'Heartwarming': "Great choice! Let's create something that warms the heart.",
+    'Magical': "Magic it is! Your story will be full of wonder.",
+    'Whimsical': "Wonderful! We'll create a whimsical tale full of surprises!",
+    'Educational': "Excellent! A story that's both fun and educational.",
+    'Action': "Action-packed adventure coming right up!"
   };
 
   const animateText = (text: string) => {
-    // Clear any existing animation
-    if (animationRef.current) {
-      clearInterval(animationRef.current);
-      animationRef.current = null;
-    }
-
-    // Reset the display text
+    if (animationRef.current) clearInterval(animationRef.current);
     setDisplayedText('');
-
-    // Start the animation
     let idx = 0;
     animationRef.current = setInterval(() => {
       setDisplayedText(text.slice(0, idx + 1));
       idx++;
-      if (idx >= text.length) {
-        if (animationRef.current) {
-          clearInterval(animationRef.current);
-          animationRef.current = null;
-        }
-      }
-    }, 20); // Speed of typing (milliseconds)
+      if (idx >= text.length && animationRef.current) clearInterval(animationRef.current);
+    }, 20);
   };
 
-  // Animate fallback on initial mount
   useEffect(() => {
-    // Only animate on first load
-    if (isFirstLoadRef.current) {
-      // Small delay to ensure component is fully mounted
-      const timer = setTimeout(() => {
-        animateText(fallback);
-        isFirstLoadRef.current = false;
-      }, 100);
-
-      return () => {
-        clearTimeout(timer);
-        if (animationRef.current) {
-          clearInterval(animationRef.current);
-        }
-      };
+    if (isFirstEntryRef.current) {
+      animateText(fallback);
+      isFirstEntryRef.current = false;
     }
   }, []);
 
-  // Handle navigation back to this step
-  useEffect(() => {
-    if (currentStep === 1 && !isFirstLoadRef.current) {
-      setDisplayedText(fallback);
-    }
-  }, [currentStep]);
-
   return (
       <div className="flex flex-col px-6 pb-8 justify-center">
-        {/* Animated question bubble */}
-        <SpeechBubble
-            message={displayedText}
-            animateIn={isFirstLoadRef.current}
-            heightClass="h-24"
-        />
-
-        {/* Multi-select tone list */}
-        <div className="space-y-3 mb-8">
-          {TONE_OPTIONS.map(({ value, label, Icon }) => {
-            const isSelected = selectedTones.includes(value);
-            return (
-                <div
-                    key={value}
-                    onClick={() => {
-                      const wasSelected = isSelected;
-                      const newSelected = wasSelected
-                          ? selectedTones.filter(v => v !== value)
-                          : [...selectedTones, value];
-                      setSelectedTones(newSelected);
-                      setTone(newSelected);
-                      if (!wasSelected) {
-                        const fullText = questionMap[value] || fallback;
-                        animateText(fullText);
-                      }
-                    }}
-                    className={`flex items-center justify-between px-4 py-3 rounded-lg border-2 transition cursor-pointer ${
-                        isSelected ? 'bg-blue-100 border-blue-600' : 'border-gray-300 hover:bg-gray-50'
-                    }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <Icon className={`w-5 h-5 ${isSelected ? 'text-blue-600' : 'text-gray-700'}`} />
-                    <span className={`${isSelected ? 'text-blue-600' : 'text-gray-900'}`}>{label}</span>
-                  </div>
-                  {isSelected ? (
-                      <CheckSquare className="w-5 h-5 text-blue-600" />
-                  ) : (
-                      <Square className="w-5 h-5 text-gray-400" />
-                  )}
-                </div>
-            );
-          })}
+        <div className="mb-6">
+          <SpeechBubble
+              message={displayedText}
+              animateIn={isFirstEntryRef.current}
+              heightClass="min-h-[60px]"
+              position="left"
+          />
         </div>
 
-        {/* Navigation buttons */}
-        <div className="mt-auto space-y-2">
+        <motion.div
+            className="space-y-3 mb-8"
+            initial="hidden"
+            animate="visible"
+            variants={{
+              visible: {
+                transition: {
+                  staggerChildren: 0.07
+                }
+              }
+            }}
+        >
+          {TONE_OPTIONS.map(({ value, label, Icon, color }) => {
+            const isSelected = selectedTones.includes(value);
+
+            return (
+                <motion.div
+                    key={value}
+                    variants={{
+                      hidden: { y: 20, opacity: 0 },
+                      visible: { y: 0, opacity: 1 }
+                    }}
+                    transition={{ duration: 0.4 }}
+                >
+                  <div
+                      onClick={() => {
+                        const wasSelected = isSelected;
+                        const newSelected = wasSelected
+                            ? selectedTones.filter(v => v !== value)
+                            : [...selectedTones, value];
+                        setSelectedTones(newSelected);
+                        setTone(newSelected);
+                        if (!wasSelected) animateText(toneMap[value] || fallback);
+                      }}
+                      className={`flex items-center justify-between px-4 py-3 rounded-2xl transition-all cursor-pointer ${
+                          isSelected
+                              ? 'bg-[#E6F4FA] border border-[#00ABF0]/30'
+                              : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                      }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className={`flex-shrink-0 w-9 h-9 rounded-md flex items-center justify-center ${isSelected ? color : 'bg-gray-100 text-gray-600'}`}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <span className={`font-medium ${isSelected ? 'text-[#00ABF0]' : 'text-gray-800'}`}>
+                                        {label}
+                                    </span>
+                    </div>
+
+                    {/* Checkbox */}
+                    <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center transition-all ${
+                        isSelected ? 'bg-[#00ABF0]' : 'bg-white border border-gray-300'
+                    }`}>
+                      {isSelected && (
+                          <motion.svg
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              width="16"
+                              height="16"
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                                d="M13.3334 4L6.00008 11.3333L2.66675 8"
+                                stroke="white"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                          </motion.svg>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+            );
+          })}
+        </motion.div>
+
+        {/* Continue button */}
+        <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.5, duration: 0.5 }}
+        >
           <Button
               onClick={() => {
                 setTone(selectedTones);
                 goToNextStep();
               }}
               disabled={selectedTones.length === 0}
-              className="w-full"
+              className={`w-full py-6 text-lg font-medium rounded-full transition-all duration-300 ${
+                  selectedTones.length === 0
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-[#4CAF50] hover:bg-[#43a047] text-white shadow-md hover:shadow-lg'
+              }`}
           >
             Continue
           </Button>
-          <Button variant="link" onClick={goToPrevStep} className="w-full text-sm">
-            Back
-          </Button>
-        </div>
+        </motion.div>
       </div>
   );
 }

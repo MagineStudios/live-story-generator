@@ -1,116 +1,126 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import Image from 'next/image';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { SpeechBubble } from './speech-bubble';
+import { Loader2, Book } from 'lucide-react';
+import { motion } from 'framer-motion';
 
-type StoryPage = {
+interface StoryData {
     id: string;
-    index: number;
-    text: string;
-    imageUrl?: string;
-};
+    title: string;
+    summary: string;
+    coverImageUrl: string;
+}
 
 export function ReviewStep() {
     const { generatedStoryId, goToNextStep } = useOnboarding();
-    const [storyPages, setStoryPages] = useState<StoryPage[]>([]);
-    const [currentPage, setCurrentPage] = useState(0);
+    const [storyData, setStoryData] = useState<StoryData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    // Fetch the story content (pages) when a story ID is available
     useEffect(() => {
-        if (!generatedStoryId) return;
-        const loadStory = async () => {
+        if (!generatedStoryId) {
+            setError("Story ID is missing. Please try again.");
+            setIsLoading(false);
+            return;
+        }
+
+        const fetchStoryData = async () => {
             try {
+                setIsLoading(true);
                 const res = await fetch(`/api/story/${generatedStoryId}`);
-                if (!res.ok) throw new Error('Failed to fetch story');
+
+                if (!res.ok) {
+                    throw new Error("Failed to load story");
+                }
+
                 const data = await res.json();
-                setStoryPages(data.pages || []);
+                setStoryData(data);
             } catch (err) {
-                console.error('Error loading story pages:', err);
+                console.error("Error loading story:", err);
+                setError("Failed to load your story. Please try again.");
             } finally {
                 setIsLoading(false);
             }
         };
-        loadStory();
+
+        fetchStoryData();
     }, [generatedStoryId]);
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center h-full">
-                <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
-                <span>Loading your story...</span>
-            </div>
-        );
-    }
-    if (!storyPages.length) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full px-4 text-center">
-                <h2 className="text-2xl font-bold mb-2">Story not found</h2>
-                <p className="text-gray-600 mb-6">Oops, we couldn’t load your story. Please try again.</p>
-            </div>
-        );
-    }
-
-    const page = storyPages[currentPage];
-
-    const goToNextPage = () => {
-        if (currentPage < storyPages.length - 1) {
-            setCurrentPage(curr => curr + 1);
-        } else {
-            // If on last page, proceed to finish step (signup)
-            goToNextStep();
-        }
-    };
-    const goToPrevPage = () => {
-        if (currentPage > 0) {
-            setCurrentPage(curr => curr - 1);
-        }
-    };
-
     return (
-        <div className="flex flex-col h-full">
-            {/* Page counter */}
-            <div className="px-4 py-2 border-b text-center text-gray-700 text-sm">
-                Page {currentPage + 1} of {storyPages.length}
+        <div className="flex flex-col px-6 pb-8 justify-center">
+            <div className="mb-6">
+                <SpeechBubble
+                    message="Your story is ready! Take a look at your magical creation."
+                    position="left"
+                />
             </div>
-            {/* Story content */}
-            <div className="px-4 py-4 flex-1 overflow-y-auto">
-                <h2 className="text-xl font-semibold mb-3">{/* Story title (if any) could be shown here */}</h2>
-                {page.imageUrl && (
-                    <div className="mb-4">
-                        <Image
-                            src={page.imageUrl}
-                            alt="Story illustration"
-                            width={400}
-                            height={300}
-                            className="w-full rounded-lg"
-                        />
-                        {/* Example action buttons for image */}
-                        <div className="flex space-x-2 mt-2">
-                            <button className="text-xs px-3 py-1 bg-gray-200 rounded-full">Re-roll</button>
-                            <button className="text-xs px-3 py-1 bg-gray-200 rounded-full">Save to My World</button>
+
+            {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-10">
+                    <Loader2 className="w-10 h-10 text-[#4CAF50] animate-spin mb-4" />
+                    <p className="text-gray-600">Loading your story...</p>
+                </div>
+            ) : error ? (
+                <div className="text-center py-6 bg-red-50 rounded-lg">
+                    <p className="text-red-500 mb-4">{error}</p>
+                    <Button
+                        variant="outline"
+                        onClick={() => window.location.reload()}
+                        className="border-red-300 text-red-500 hover:bg-red-50"
+                    >
+                        Try again
+                    </Button>
+                </div>
+            ) : storyData && (
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="mb-8"
+                >
+                    {/* Story preview card */}
+                    <div className="bg-white rounded-2xl overflow-hidden border border-gray-200 shadow-md">
+                        {/* Cover image */}
+                        {storyData.coverImageUrl ? (
+                            <div className="aspect-[3/2] relative">
+                                <img
+                                    src={storyData.coverImageUrl}
+                                    alt={storyData.title}
+                                    className="w-full h-full object-cover"
+                                />
+                            </div>
+                        ) : (
+                            <div className="aspect-[3/2] bg-gray-100 flex flex-col items-center justify-center">
+                                <Book className="w-12 h-12 text-gray-400 mb-2" />
+                                <p className="text-gray-500">No cover image available</p>
+                            </div>
+                        )}
+
+                        {/* Story details */}
+                        <div className="p-4">
+                            <h2 className="text-xl font-bold mb-2">{storyData.title}</h2>
+                            <p className="text-gray-600 mb-4">{storyData.summary}</p>
                         </div>
                     </div>
-                )}
-                <p className="text-gray-800 text-base leading-relaxed">{page.text}</p>
-            </div>
-            {/* Navigation buttons */}
-            <div className="px-4 py-3 flex items-center space-x-2 border-t">
-                <button
-                    onClick={goToPrevPage}
-                    disabled={currentPage === 0}
-                    className="flex-1 py-2 bg-gray-200 rounded-lg text-gray-700 disabled:opacity-50"
+                </motion.div>
+            )}
+
+            {/* Continue button */}
+            <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.5 }}
+            >
+                <Button
+                    onClick={goToNextStep}
+                    disabled={isLoading}
+                    className="w-full py-6 text-lg font-medium rounded-full bg-[#4CAF50] hover:bg-[#43a047] text-white cursor-pointer shadow-md hover:shadow-lg transition-all duration-300"
                 >
-                    {currentPage === 0 ? 'Back' : 'Previous'}
-                </button>
-                <button
-                    onClick={goToNextPage}
-                    className="flex-1 py-2 bg-[#212121] text-white rounded-lg"
-                >
-                    {currentPage === storyPages.length - 1 ? 'Finish' : 'Next'}
-                </button>
-            </div>
+                    Continue
+                </Button>
+            </motion.div>
         </div>
     );
 }

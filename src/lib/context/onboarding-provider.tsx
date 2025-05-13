@@ -66,7 +66,7 @@ export function useOnboarding() {
 // OnboardingProvider component
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
     const { userId } = useAuth();  // Clerk user ID (if logged in)
-    const MAX_STEPS = 8;          // Total steps: 0-7 in the wizard
+    const MAX_STEPS = 11;          // Total steps: 0-11 in the wizard
 
     // Determine or generate a tempId for guest sessions only
     const [tempId, setTempId] = useState<string | null>(null);
