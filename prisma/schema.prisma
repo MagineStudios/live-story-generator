@@ -122,6 +122,8 @@ model OnboardingSession {
   story     Story?   @relation("StoryOnboardingSessions", fields: [storyId], references: [id], onDelete: SetNull)
   storyId   String?
   createdAt DateTime @default(now())
+
+  @@unique([userId])
 }
 
 model StoryPage {
