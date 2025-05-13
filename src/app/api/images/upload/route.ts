@@ -5,7 +5,7 @@ import { Readable } from 'stream';
 import { prisma } from '@/lib/prisma';
 import { ElementCategory } from '@prisma/client';
 
-// Configure Cloudinary
+// Cloudinary configuration
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
@@ -13,7 +13,7 @@ cloudinary.config({
     secure: true,
 });
 
-// Convert buffer to stream (for Cloudinary upload)
+// Utility: convert Buffer to ReadableStream for Cloudinary upload
 function bufferToStream(buffer: Buffer) {
     const readable = new Readable({
         read() {
@@ -27,101 +27,87 @@ function bufferToStream(buffer: Buffer) {
 export async function POST(req: NextRequest) {
     try {
         const { userId } = await auth();
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        // Validate that the user exists in our database
-        const userExists = await prisma.user.findUnique({
-            where: { id: userId },
-        });
-
-        if (!userExists) {
-            console.error(`User with ID ${userId} not found in the database`);
-            // Create the user if they don't exist
-            await prisma.user.create({
-                data: {
-                    id: userId,
-                    // Set default values as needed
-                }
-            });
-            console.log(`Created user with ID ${userId} in the database`);
-        }
-
-        // Parse form data
+        // Parse multipart form data
         const formData = await req.formData();
         const file = formData.get('file') as File | null;
         const categoryRaw = formData.get('category') as string | null;
+        const tempId = formData.get('tempId') as string | null;
         const name = formData.get('name') as string | null;
-
-        const category = categoryRaw ?
-            (Object.values(ElementCategory).includes(categoryRaw as ElementCategory) ?
-                categoryRaw as ElementCategory :
-                // Check if the category string exists in a case-insensitive manner
-                Object.values(ElementCategory).find(c =>
-                    c.toLowerCase() === categoryRaw.toLowerCase()
-                ) as ElementCategory || ElementCategory.CHARACTER) :
-            ElementCategory.CHARACTER;
 
         if (!file) {
             return NextResponse.json({ error: 'No file provided' }, { status: 400 });
         }
+        // Determine category (default to CHARACTER if not provided or invalid)
+        let category: ElementCategory = ElementCategory.CHARACTER;
+        if (categoryRaw && Object.values(ElementCategory).includes(categoryRaw as ElementCategory)) {
+            category = categoryRaw as ElementCategory;
+        }
 
-        // Get file buffer
+        // Read file into buffer
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
 
-        // Create a timestamp for folder organization
-        const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        // Create folder path for Cloudinary
+        const datePrefix = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        let uploadFolder: string;
+        if (userId) {
+            // Authenticated user - use their userId in path
+            uploadFolder = `users/${userId}/my-world/${datePrefix}/${category.toLowerCase()}`;
+        } else {
+            if (!tempId) {
+                return NextResponse.json({ error: 'Unauthorized (no tempId)' }, { status: 401 });
+            }
+            uploadFolder = `guests/${tempId}/my-world/${datePrefix}/${category.toLowerCase()}`;
+        }
 
-        // Upload to Cloudinary with user-specific folder structure
-        const result = await new Promise<any>((resolve, reject) => {
-            const uploadStream = cloudinary.uploader.upload_stream(
-                {
-                    folder: `users/${userId}/my-world/${timestamp}/${category.toLowerCase()}`,
-                    resource_type: 'auto',
-                },
+        // Perform upload to Cloudinary
+        const uploadResult = await new Promise<any>((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+                { folder: uploadFolder, resource_type: 'auto' },
                 (error, result) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        resolve(result);
-                    }
+                    if (error || !result) reject(error || new Error('Upload failed'));
+                    else resolve(result);
                 }
             );
-
-            bufferToStream(buffer).pipe(uploadStream);
+            bufferToStream(buffer).pipe(stream);
         });
 
-        console.log('Cloudinary upload successful, creating DB record with userId:', userId);
+        // Ensure the user exists in our DB (for logged-in users)
+        let dbUserId: string | null = null;
+        if (userId) {
+            dbUserId = userId;
+            const userExists = await prisma.user.findUnique({ where: { id: userId } });
+            if (!userExists) {
+                // Create a new User record for this Clerk user
+                await prisma.user.create({ data: { id: userId, credits: 0 } });
+            }
+        }
 
-        // After successful upload to Cloudinary, save as a MyWorldElement in the database
+        // Create a MyWorldElement record in the database
         const element = await prisma.myWorldElement.create({
             data: {
                 name: name || `My ${category.toLowerCase()}`,
-                description: '',  // Will be filled by analysis endpoint later
-                imageUrl: result.secure_url,
-                publicId: result.public_id,
+                description: '', // description will be filled in after AI analysis
+                imageUrl: uploadResult.secure_url,
+                publicId: uploadResult.public_id,
                 category: category,
                 isDefault: false,
-                userId: userId,
+                userId: dbUserId,       // null for guests
+                tempId: dbUserId ? null : tempId,
             }
         });
 
-        // Return both Cloudinary result and database element ID
+        // Respond with image info and the new element ID
         return NextResponse.json({
             success: true,
-            publicId: result.public_id,
-            url: result.secure_url,
-            width: result.width,
-            height: result.height,
+            publicId: uploadResult.public_id,
+            url: uploadResult.secure_url,
+            width: uploadResult.width,
+            height: uploadResult.height,
             elementId: element.id
         });
     } catch (error: any) {
-        console.error('Upload error:', error);
-        return NextResponse.json(
-            { error: error.message || 'Failed to upload file' },
-            { status: 500 }
-        );
+        console.error('Error in image upload:', error);
+        return NextResponse.json({ error: error.message || 'Upload failed' }, { status: 500 });
     }
 }

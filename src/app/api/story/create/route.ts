@@ -181,7 +181,7 @@ async function generateStoryImages(storyId: string, pages: string[], visualStyle
                 const imageVariant = await prisma.imageVariant.findFirst({
                     where: {
                         secureUrl: imageUrl,
-                        userId,
+                        ...(userId ? { userId } : {}),
                     },
                     orderBy: {
                         createdAt: 'desc'
@@ -313,7 +313,7 @@ export async function POST(req: NextRequest) {
                     data: {
                         title: providedTitle || title,
                         status: StoryStatus.GENERATING,
-                    },
+                    } as any,
                 });
 
                 // Create page records in the database

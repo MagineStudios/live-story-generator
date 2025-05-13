@@ -45,36 +45,38 @@ enum ElementCategory {
 
 // ---------- Core tables ----------
 model User {
-  id         String           @id // equals Clerk userId
-  credits    Int              @default(0)
-  createdAt  DateTime         @default(now())
-  stories    Story[]
-  images     ImageVariant[]
-  videoTasks VideoTask[]
-  musicTasks MusicTask[]
-  ledger     CreditLedger[]
-  myWorld    MyWorldElement[] // Added relation to user's personal elements
+  id                 String              @id // equals Clerk userId
+  credits            Int                 @default(0)
+  createdAt          DateTime            @default(now())
+  stories            Story[]
+  images             ImageVariant[]
+  videoTasks         VideoTask[]
+  musicTasks         MusicTask[]
+  ledger             CreditLedger[]
+  myWorld            MyWorldElement[] // Added relation to user's personal elements
+  onboardingSessions OnboardingSession[] @relation("UserOnboardingSessions")
 }
 
 model Story {
-  id            String         @id @default(cuid())
-  user          User           @relation(fields: [userId], references: [id])
-  userId        String
-  title         String
-  theme         String // Theme/prompt selected by the user
-  visualStyle   String // ID of the visual style
-  styleName     String // Name of the visual style for quick reference
-  language      String         @default("en")
-  status        StoryStatus    @default(DRAFT)
-  pdfUrl        String? // Generated PDF URL
-  animationUrl  String? // Generated video URL if animation was requested
-  musicUrl      String? // Generated/selected music URL if added
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  pages         StoryPage[]
-  videoTasks    VideoTask[]    @relation("StoryVideoTasks")
-  musicTasks    MusicTask[]    @relation("StoryMusicTasks")
-  storyElements StoryElement[] // Elements used in this story
+  id                 String              @id @default(cuid())
+  user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId             String? // now optional to allow guest stories
+  tempId             String? // temporary session ID for guest (if userId is null)  title         String
+  theme              String // Theme/prompt selected by the user
+  visualStyle        String // ID of the visual style
+  styleName          String // Name of the visual style for quick reference
+  language           String              @default("en")
+  status             StoryStatus         @default(DRAFT)
+  pdfUrl             String? // Generated PDF URL
+  animationUrl       String? // Generated video URL if animation was requested
+  musicUrl           String? // Generated/selected music URL if added
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  pages              StoryPage[]
+  videoTasks         VideoTask[]         @relation("StoryVideoTasks")
+  musicTasks         MusicTask[]         @relation("StoryMusicTasks")
+  storyElements      StoryElement[] // Elements used in this story
+  onboardingSessions OnboardingSession[] @relation("StoryOnboardingSessions")
 }
 
 // New model for story elements
@@ -101,11 +103,25 @@ model MyWorldElement {
   isDetectedInStory Boolean         @default(false) // Whether this element was detected in a story by AI
   user              User?           @relation(fields: [userId], references: [id]) // Null for default elements
   userId            String?
+  tempId            String? // temporary session ID for guest-owned element
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   stories           StoryElement[]
 
   @@index([userId, category]) // Index for faster lookups
+  @@index([tempId]) // index to find guest elements by session
+}
+
+model OnboardingSession {
+  id        String   @id @default(cuid())
+  tempId    String?  @unique // unique guest session ID (null after migration)
+  user      User?    @relation("UserOnboardingSessions", fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
+  storyGoal String?
+  tone      String?
+  story     Story?   @relation("StoryOnboardingSessions", fields: [storyId], references: [id], onDelete: SetNull)
+  storyId   String?
+  createdAt DateTime @default(now())
 }
 
 model StoryPage {
