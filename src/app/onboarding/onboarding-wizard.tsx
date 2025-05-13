@@ -25,25 +25,26 @@ export function OnboardingWizard() {
 
     // Calculate progress percentage for progress bar
     const totalSteps = 8;  // 0 through 7
-    const progressPercent = Math.min((currentStep / (totalSteps - 1)) * 100, 100);
+    const rawPercent = (currentStep / (totalSteps - 1)) * 100;
+    const progressPercent = currentStep === 0 ? 10 : Math.min(rawPercent, 100);
 
     return (
         <div className="relative w-full max-w-md mx-auto min-h-screen flex flex-col bg-white">
             {/* Top navigation: Back button and progress indicator */}
-            <div className="flex items-center px-4 py-3">
+            <div className="flex items-center px-4 py-2 pb-2">
                 <button
                     type="button"
                     onClick={goToPrevStep}
                     disabled={backDisabled}
-                    className={`mr-4 p-2 ${backDisabled ? 'opacity-0 pointer-events-none' : ''}`}
+                    className={`mr-4 p-2 ${backDisabled ? 'opacity-0 pointer-events-none' : 'cursor-pointer'}`}
                 >
                     <ArrowLeft className="h-6 w-6 text-gray-800" />
                 </button>
                 {/* Progress bar */}
                 <div className="flex-1">
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                    <div className="w-full bg-gray-200 rounded-full h-3">
                         <div
-                            className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                            className="bg-blue-600 h-3 rounded-full transition-all duration-300"
                             style={{ width: `${progressPercent}%` }}
                         />
                     </div>
@@ -51,7 +52,7 @@ export function OnboardingWizard() {
             </div>
 
             {/* Step content */}
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col pt-0">
                 {currentStep === 0 && <GoalStep />}
                 {currentStep === 1 && <ToneStep />}
                 {currentStep === 2 && <CharactersStep />}

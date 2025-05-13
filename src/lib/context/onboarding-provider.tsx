@@ -71,14 +71,38 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     // Determine or generate a tempId for guest sessions only
     const [tempId, setTempId] = useState<string | null>(null);
     useEffect(() => {
-        if (!userId) {
+        if (userId) {
+            // If user logs in, clear tempId and local storage
+            setTempId(null);
+            localStorage.removeItem('magicstory_tempId');
+            localStorage.removeItem('magicstory_onboarding');
+        } else {
+            // Guest user: use or create tempId
             let storedTemp = localStorage.getItem('magicstory_tempId');
             if (!storedTemp) {
-                storedTemp = `temp_${crypto.randomUUID()}`;  // generate unique tempId
+                storedTemp = `temp_${crypto.randomUUID()}`;
                 localStorage.setItem('magicstory_tempId', storedTemp);
             }
             setTempId(storedTemp);
         }
+    }, [userId]);
+
+
+    // after your tempId effect, add:
+    useEffect(() => {
+        if (!userId) return;
+        (async () => {
+            try {
+                const res = await fetch('/api/onboarding/fetch');
+                if (!res.ok) throw new Error('Failed to load onboarding data');
+                const data = await res.json();
+                if (data.storyGoal) _setStoryGoal(data.storyGoal);
+                if (data.tone) _setTone(data.tone);
+                if (data.currentStep !== undefined) _setCurrentStep(data.currentStep);
+            } catch (err) {
+                console.error('Onboarding fetch error:', err);
+            }
+        })();
     }, [userId]);
 
     // Onboarding state variables
@@ -108,6 +132,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     // Hydrate state from localStorage on initial render (for returning guest)
     useEffect(() => {
+        if (userId) return;
         try {
             const saved = localStorage.getItem('magicstory_onboarding');
             if (saved) {
@@ -136,26 +161,28 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         } catch (err) {
             console.warn('Failed to parse saved onboarding data:', err);
         }
-    }, []);
+    }, [userId]);
 
     // Persist state to localStorage whenever it changes (for guest persistence)
     useEffect(() => {
-        const data = {
-            storyGoal,
-            tone,
-            selectedElements,
-            uploadedElements,
-            visualStyle,
-            themePrompt,
-            themeSuggestions,
-            currentStep,
-        };
-        try {
-            localStorage.setItem('magicstory_onboarding', JSON.stringify(data));
-        } catch (err) {
-            console.error('Failed to save onboarding state:', err);
+        if (!userId) {
+            const data = {
+                storyGoal,
+                tone,
+                selectedElements,
+                uploadedElements,
+                visualStyle,
+                themePrompt,
+                themeSuggestions,
+                currentStep,
+            };
+            try {
+                localStorage.setItem('magicstory_onboarding', JSON.stringify(data));
+            } catch (err) {
+                console.error('Failed to save onboarding state:', err);
+            }
         }
-    }, [storyGoal, tone, selectedElements, uploadedElements, visualStyle, themePrompt, themeSuggestions, currentStep]);
+    }, [storyGoal, tone, selectedElements, uploadedElements, visualStyle, themePrompt, themeSuggestions, currentStep, userId]);
 
     // Context action: set story goal
     const setStoryGoal = (goals: string[]) => {
@@ -225,10 +252,12 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     // Navigation: go to the next step
     const goToNextStep = () => {
         _setCurrentStep(curr => Math.min(curr + 1, MAX_STEPS - 1));
+        saveOnboardingPrefs({ currentStep })
     };
     // Navigation: go to previous step
     const goToPrevStep = () => {
         _setCurrentStep(curr => Math.max(curr - 1, 0));
+        saveOnboardingPrefs({ currentStep })
     };
 
     // Upload a new image (character/pet/location/object) and analyze it via AI

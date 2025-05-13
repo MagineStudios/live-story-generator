@@ -114,15 +114,16 @@ model MyWorldElement {
 }
 
 model OnboardingSession {
-  id        String   @id @default(cuid())
-  tempId    String?  @unique // unique guest session ID (null after migration)
-  user      User?    @relation("UserOnboardingSessions", fields: [userId], references: [id], onDelete: SetNull)
-  userId    String?
-  storyGoal String[] @default([])
-  tone      String[] @default([])
-  story     Story?   @relation("StoryOnboardingSessions", fields: [storyId], references: [id], onDelete: SetNull)
-  storyId   String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  tempId      String?  @unique // unique guest session ID (null after migration)
+  user        User?    @relation("UserOnboardingSessions", fields: [userId], references: [id], onDelete: SetNull)
+  userId      String?
+  storyGoal   String[] @default([])
+  tone        String[] @default([])
+  story       Story?   @relation("StoryOnboardingSessions", fields: [storyId], references: [id], onDelete: SetNull)
+  storyId     String?
+  createdAt   DateTime @default(now())
+  currentStep Int      @default(0)
 
   @@unique([userId])
 }
