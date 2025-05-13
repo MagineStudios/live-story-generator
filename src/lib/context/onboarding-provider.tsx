@@ -23,8 +23,8 @@ type VisualStyle = { id: string; name: string; imageUrl: string };
 // Context state shape
 interface OnboardingState {
     // Onboarding answers
-    storyGoal: string;
-    tone: string;
+    storyGoal: string[];
+    tone: string[];
     selectedElements: MyWorldElement[];
     uploadedElements: MyWorldElement[];  // all uploaded elements (selected or not)
     visualStyle?: VisualStyle;
@@ -37,8 +37,8 @@ interface OnboardingState {
     isGeneratingStory: boolean;
     generatedStoryId?: string;
     // Actions
-    setStoryGoal: (goal: string) => void;
-    setTone: (tone: string) => void;
+    setStoryGoal: (goals: string[]) => void;
+    setTone: (tones: string[]) => void;
     addElement: (el: MyWorldElement) => void;
     removeElement: (id: string) => void;
     clearAllElements: () => void;
@@ -82,8 +82,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }, [userId]);
 
     // Onboarding state variables
-    const [storyGoal, _setStoryGoal] = useState<string>('');
-    const [tone, _setTone] = useState<string>('');
+    const [storyGoal, _setStoryGoal] = useState<string[]>([]);
+    const [tone, _setTone] = useState<string[]>([]);
     const [selectedElements, setSelectedElements] = useState<MyWorldElement[]>([]);
     const [uploadedElements, setUploadedElements] = useState<MyWorldElement[]>([]);
     const [visualStyle, _setVisualStyle] = useState<VisualStyle | undefined>();
@@ -112,8 +112,20 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             const saved = localStorage.getItem('magicstory_onboarding');
             if (saved) {
                 const data = JSON.parse(saved);
-                if (data.storyGoal) _setStoryGoal(data.storyGoal);
-                if (data.tone) _setTone(data.tone);
+                if (data.storyGoal) {
+                    if (Array.isArray(data.storyGoal)) {
+                        _setStoryGoal(data.storyGoal);
+                    } else if (typeof data.storyGoal === 'string') {
+                        _setStoryGoal([data.storyGoal]);
+                    }
+                }
+                if (data.tone) {
+                    if (Array.isArray(data.tone)) {
+                        _setTone(data.tone);
+                    } else if (typeof data.tone === 'string') {
+                        _setTone([data.tone]);
+                    }
+                }
                 if (data.selectedElements) setSelectedElements(data.selectedElements);
                 if (data.uploadedElements) setUploadedElements(data.uploadedElements);
                 if (data.visualStyle) _setVisualStyle(data.visualStyle);
@@ -146,14 +158,14 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }, [storyGoal, tone, selectedElements, uploadedElements, visualStyle, themePrompt, themeSuggestions, currentStep]);
 
     // Context action: set story goal
-    const setStoryGoal = (goal: string) => {
-        _setStoryGoal(goal);
-        saveOnboardingPrefs({ storyGoal: goal });
+    const setStoryGoal = (goals: string[]) => {
+        _setStoryGoal(goals);
+        saveOnboardingPrefs({ storyGoal: goals });
     };
     // Context action: set tone
-    const setTone = (val: string) => {
-        _setTone(val);
-        saveOnboardingPrefs({ tone: val });
+    const setTone = (tones: string[]) => {
+        _setTone(tones);
+        saveOnboardingPrefs({ tone: tones });
     };
 
     // Add a MyWorld element to the selected list

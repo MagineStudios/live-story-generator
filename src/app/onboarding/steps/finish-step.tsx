@@ -33,13 +33,13 @@ export function FinishStep() {
                 {userId ? (
                     <>Your story has been saved to your account.</>
                 ) : (
-                    <>You created a story {storyGoal ? "to " + storyGoal.toLowerCase() : ''}! Create an account to save it and continue the magic.</>
+                    <>You created a story {storyGoal && storyGoal.length > 0 ? `to ${storyGoal.join(', ')}` : ''}! Create an account to save it and continue the magic.</>
                 )}
             </p>
             {!userId && (
                 <div className="w-full max-w-xs mx-auto mb-4">
                     {/* Clerk SignUp component; after successful sign-up, userId will be set and migration will occur */}
-                    <SignUp path="/onboarding/sign-up" routing="path" signInUrl="/sign-in" forceRedirectUrl="/g" />
+                    <SignUp path="/onboarding/sign-up" routing="path" signInUrl="/sign-in" fallbackRedirectUrl="/" />
                 </div>
             )}
             {userId && (
