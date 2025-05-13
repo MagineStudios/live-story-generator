@@ -61,7 +61,8 @@ model Story {
   id                 String              @id @default(cuid())
   user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   userId             String? // now optional to allow guest stories
-  tempId             String? // temporary session ID for guest (if userId is null)  title         String
+  tempId             String? // temporary session ID for guest (if userId is null)
+  title              String // Title of the story
   theme              String // Theme/prompt selected by the user
   visualStyle        String // ID of the visual style
   styleName          String // Name of the visual style for quick reference
