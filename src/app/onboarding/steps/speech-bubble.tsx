@@ -35,30 +35,28 @@ export function SpeechBubble({
 
     // Position-specific classes and bubble-tail styles
     let containerClasses = "";
-    let bubbleClasses = "bg-white p-4 rounded-2xl shadow-md";
+    let bubbleClasses = "bg-white p-3 rounded-2xl shadow-[0_3px_8px_rgba(0,0,0,0.2)]"; // Enhanced shadow
+    let caretClasses = "";
     let tailElement = null;
 
     switch (position) {
         case 'left':
             containerClasses = "flex items-start";
             bubbleClasses += " ml-4";
-            tailElement = (
-                <div className="absolute w-4 h-4 bg-white rotate-45 left-0 top-1/2 -translate-y-1/2 -translate-x-1.5"></div>
-            );
+            caretClasses = "absolute w-4 h-4 bg-white rotate-45 left-0 top-1/2 -translate-y-1/2 -translate-x-1.5 shadow-[-3px_0px_4px_rgba(0,0,0,0.06)]"; // Left-pointing caret shadow
+            tailElement = <div className={caretClasses}></div>;
             break;
         case 'right':
             containerClasses = "flex items-start flex-row-reverse";
             bubbleClasses += " mr-4";
-            tailElement = (
-                <div className="absolute w-4 h-4 bg-white rotate-45 right-0 top-1/2 -translate-y-1/2 translate-x-1.5"></div>
-            );
+            caretClasses = "absolute w-4 h-4 bg-white rotate-45 right-0 top-1/2 -translate-y-1/2 translate-x-1.5 shadow-[2px_0px_4px_rgba(0,0,0,0.06)]"; // Right-pointing caret shadow
+            tailElement = <div className={caretClasses}></div>;
             break;
         case 'top':
             containerClasses = "flex flex-col items-center";
             bubbleClasses += " mb-4";
-            tailElement = (
-                <div className="absolute w-4 h-4 bg-white rotate-45 bottom-0 left-1/2 -translate-x-1/2 translate-y-1.5"></div>
-            );
+            caretClasses = "absolute w-4 h-4 bg-white rotate-45 bottom-0 left-1/2 -translate-x-1/2 translate-y-1.5 shadow-[0px_2px_4px_rgba(0,0,0,0.08)]"; // Bottom-pointing caret shadow
+            tailElement = <div className={caretClasses}></div>;
             break;
     }
 
@@ -81,6 +79,7 @@ export function SpeechBubble({
             >
                 <div className={`${bubbleClasses} relative ${heightClass || ''}`}>
                     <div className="text-lg font-nunito">{message}</div>
+                    {/* The caret/tail with its own shadow */}
                     {tailElement}
                 </div>
             </motion.div>
