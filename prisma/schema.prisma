@@ -180,9 +180,9 @@ model MyWorldElement {
   updatedAt           DateTime             @updatedAt
   stories             StoryElement[]
   characterAttributes CharacterAttributes?
-  PetAttributes       PetAttributes?
-  ObjectAttributes    ObjectAttributes?
-  LocationAttributes  LocationAttributes?
+  petAttributes       PetAttributes?
+  objectAttributes    ObjectAttributes?
+  locationAttributes  LocationAttributes?
 
   @@index([userId, category]) // Index for faster lookups
   @@index([tempId]) // index to find guest elements by session
