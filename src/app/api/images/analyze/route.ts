@@ -166,6 +166,16 @@ export async function POST(req: NextRequest) {
                 break;
 
             case 'PET':
+                // Convert heterochromatic eyes to string
+                let eyeColorValue = analysis.eyeColor;
+                if (typeof eyeColorValue === 'object' && eyeColorValue !== null) {
+                    if (eyeColorValue.left && eyeColorValue.right) {
+                        eyeColorValue = `Heterochromatic: left ${eyeColorValue.left}, right ${eyeColorValue.right}`;
+                    } else {
+                        eyeColorValue = JSON.stringify(eyeColorValue);
+                    }
+                }
+
                 await prisma.petAttributes.upsert({
                     where: { elementId },
                     update: {
@@ -175,9 +185,9 @@ export async function POST(req: NextRequest) {
                         furColor: analysis.furColor || null,
                         furStyle: analysis.furStyle || null,
                         markings: analysis.markings || null,
-                        eyeColor: analysis.eyeColor || null,
+                        eyeColor: eyeColorValue || null, // Use the converted string
                         collar: analysis.collar || null,
-                        accessories: analysis.accessories || null,
+                        accessories: analysis.accessories || null
                     },
                     create: {
                         elementId,
@@ -187,10 +197,10 @@ export async function POST(req: NextRequest) {
                         furColor: analysis.furColor || null,
                         furStyle: analysis.furStyle || null,
                         markings: analysis.markings || null,
-                        eyeColor: analysis.eyeColor || null,
+                        eyeColor: eyeColorValue || null, // Use the converted string
                         collar: analysis.collar || null,
-                        accessories: analysis.accessories || null,
-                    },
+                        accessories: analysis.accessories || null
+                    }
                 });
                 break;
 

@@ -9,10 +9,10 @@ type VisualStyle = { id: string; name: string; imageUrl: string };
 
 // Context state shape
 interface OnboardingState {
-    // Onboarding answers
+    // Onboarding answers0
     storyGoal: string[];
     tone: string[];
-    tempId: string;
+    tempId: string | null;
     selectedElements: MyWorldElement[];
     uploadedElements: MyWorldElement[];  // all uploaded elements (selected or not)
     visualStyle?: VisualStyle;

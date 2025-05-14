@@ -49,6 +49,8 @@ export function CharactersStep() {
     const animationRef = useRef<NodeJS.Timeout | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [showAnalyzingUI, setShowAnalyzingUI] = useState(false);
+    const [isProcessingComplete, setIsProcessingComplete] = useState(true);
+    const [pendingCharacters, setPendingCharacters] = useState<string[]>([]);
 
     // Selected character tracking (max 3)
     const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
@@ -61,6 +63,9 @@ export function CharactersStep() {
     const [attributesData, setAttributesData] = useState<CharacterAttributes | null>(null);
     const [lastUploadedElement, setLastUploadedElement] = useState<any | null>(null);
 
+    // Local storage for characters to ensure they persist
+    const [localCharacters, setLocalCharacters] = useState<any[]>([]);
+
     // Character limit
     const MAX_CHARACTERS = 3;
 
@@ -70,6 +75,7 @@ export function CharactersStep() {
     const categoryDetectionText = "Hmm, let me see what we have here...";
     const loadingText = "Loading your cast of characters...";
     const maxCharactersText = "Amazing! You've selected all 3 characters for your story!";
+    const confirmTraitsText = "Your character is ready! Let's add some details to bring them to life!";
 
     // Dynamic speech messages that incorporate names and types
     const getSpeechForUploadedElement = (element: any) => {
@@ -121,10 +127,16 @@ export function CharactersStep() {
 
                 // If we already have characters in context, use those
                 if (existingCharacters.length > 0) {
+                    console.log('Found existing characters:', existingCharacters);
+
                     // Add existing characters to selected elements if not already there
                     existingCharacters.forEach(character => {
                         addElement(character);
                     });
+
+                    // Store in local state too
+                    setLocalCharacters(existingCharacters);
+
                     animateText("Welcome back! Your cast of characters is ready for a new adventure!");
 
                     // Set first character as primary if none is set
@@ -142,10 +154,15 @@ export function CharactersStep() {
                         const { elements } = await response.json();
 
                         if (elements && elements.length > 0) {
+                            console.log('Loaded characters from API:', elements);
+
                             // Add these elements to the selected elements
                             elements.forEach((element: any) => {
                                 addElement(element);
                             });
+
+                            // Store in local state too
+                            setLocalCharacters(elements);
 
                             // Set first character as primary if none is set
                             if (elements.length > 0 && !primaryCharacterId) {
@@ -187,10 +204,15 @@ export function CharactersStep() {
         if (isAnalyzingImage) {
             animateText(uploadingText);
             setShowAnalyzingUI(true);
+            setIsProcessingComplete(false);
+        } else if (!isProcessingComplete) {
+            // When analysis is complete but we're still in processing stage
+            // Don't hide the analyzing UI yet until full process is complete
         } else {
+            // Only hide analyzing UI when the entire process is complete
             setShowAnalyzingUI(false);
         }
-    }, [isAnalyzingImage]);
+    }, [isAnalyzingImage, isProcessingComplete]);
 
     // Update text when max characters are selected
     useEffect(() => {
@@ -202,16 +224,13 @@ export function CharactersStep() {
     // Toggle character selection
     const toggleCharacterSelection = (characterId: string) => {
         if (selectedCharacters.includes(characterId)) {
-            // If this is the primary character, don't allow deselection
-            if (characterId === primaryCharacterId) {
-                toast.error("Can't Remove Primary", {
-                    description: "You need to set another character as primary first."
-                });
-                return;
-            }
-
-            // Otherwise remove from selection
+            // Remove from selection (allow unselection of primary character)
             setSelectedCharacters(selectedCharacters.filter(id => id !== characterId));
+
+            // If this was the primary character, clear primary status
+            if (characterId === primaryCharacterId) {
+                setPrimaryCharacterId(null);
+            }
         } else {
             // Check if we've reached the max before adding
             if (selectedCharacters.length >= MAX_CHARACTERS) {
@@ -228,10 +247,16 @@ export function CharactersStep() {
 
     // Set primary character
     const setPrimaryCharacter = (characterId: string) => {
-        if (characterId === primaryCharacterId) return;
+        // Toggle primary status
+        if (characterId === primaryCharacterId) {
+            setPrimaryCharacterId(null);
+            return;
+        }
 
         // Find the character by ID
-        const character = selectedElements.find(el => el.id === characterId);
+        const character = selectedElements.find(el => el.id === characterId) ||
+            localCharacters.find(el => el.id === characterId);
+
         const characterName = character ? character.name : "This character";
 
         // Set new primary
@@ -265,6 +290,7 @@ export function CharactersStep() {
 
         // Immediately show analyzing UI and text
         setShowAnalyzingUI(true);
+        setIsProcessingComplete(false);
         animateText(uploadingText);
 
         try {
@@ -302,29 +328,26 @@ export function CharactersStep() {
 
             // Now upload with the detected category
             const newElement = await addUploadedImage(file, category);
+            console.log('New element uploaded:', newElement);
 
             if (newElement) {
                 setLastUploadedElement(newElement);
-                setShowAnalyzingUI(false);
+
+                // Add to local characters but keep analyzing UI visible
+                setLocalCharacters(prev => [...prev, newElement]);
 
                 // Set as primary character if it's the first one
                 if (!primaryCharacterId) {
                     setPrimaryCharacterId(newElement.id);
                 }
 
-                // Add to selected characters
-                setSelectedCharacters(prev => {
-                    // Check if we're at max capacity
-                    if (prev.length >= MAX_CHARACTERS) {
-                        return prev;
-                    }
-                    return [...prev, newElement.id];
-                });
+                // Add to pending characters instead of selected characters immediately
+                setPendingCharacters(prev => [...prev, newElement.id]);
 
                 // Show confirmation based on category
-                animateText(getSpeechForUploadedElement(newElement));
+                animateText(confirmTraitsText);
 
-                // After a delay, open the attributes editor
+                // After a short delay, open the attributes editor
                 setTimeout(() => {
                     handleEditAttributes(newElement.id);
                 }, 1000);
@@ -335,6 +358,7 @@ export function CharactersStep() {
                 description: "There was an error uploading your image."
             });
             animateText("Oops! Something went wrong with the upload. Please try again.");
+            setIsProcessingComplete(true);
             setShowAnalyzingUI(false);
         }
 
@@ -377,14 +401,31 @@ export function CharactersStep() {
             });
 
             if (response.ok) {
-                const character = selectedElements.find(el => el.id === currentElementId);
+                const character = selectedElements.find(el => el.id === currentElementId) ||
+                    localCharacters.find(el => el.id === currentElementId);
 
                 toast.success("Success!", {
                     description: "Details saved successfully."
                 });
 
+                // Only now hide the analyzing UI if it was still showing
+                setShowAnalyzingUI(false);
+                setIsProcessingComplete(true);
+
+                // If this character was pending, now officially add it to selected
+                if (pendingCharacters.includes(currentElementId)) {
+                    setPendingCharacters(prev => prev.filter(id => id !== currentElementId));
+                    setSelectedCharacters(prev => {
+                        // Check if we're at max capacity
+                        if (prev.length >= MAX_CHARACTERS) {
+                            return prev;
+                        }
+                        return [...prev, currentElementId];
+                    });
+                }
+
                 // Update the displayed text to confirm success
-                animateText(`Great! ${character?.name}'s details have been saved. Looking good!`);
+                animateText(getSpeechForUploadedElement(character));
             } else {
                 throw new Error('Failed to save attributes');
             }
@@ -393,6 +434,21 @@ export function CharactersStep() {
             toast.error("Save Failed", {
                 description: "There was an error saving your details."
             });
+            // Hide analyzing UI on error
+            setShowAnalyzingUI(false);
+            setIsProcessingComplete(true);
+
+            // Also move from pending to selected even on error
+            // so the character still appears
+            if (pendingCharacters.includes(currentElementId)) {
+                setPendingCharacters(prev => prev.filter(id => id !== currentElementId));
+                setSelectedCharacters(prev => {
+                    if (prev.length >= MAX_CHARACTERS) {
+                        return prev;
+                    }
+                    return [...prev, currentElementId];
+                });
+            }
         }
     };
 
@@ -417,6 +473,13 @@ export function CharactersStep() {
             // Update name in local state
             updateElementName(currentElementId, newName);
 
+            // Also update in our local characters array
+            setLocalCharacters(prev =>
+                prev.map(char =>
+                    char.id === currentElementId ? {...char, name: newName} : char
+                )
+            );
+
             toast.success("Name Updated", {
                 description: "Name has been updated successfully."
             });
@@ -428,13 +491,80 @@ export function CharactersStep() {
         }
     };
 
-    // Filter characters, pets, and objects for display
-    const charactersForDisplay = selectedElements.filter(el =>
-        el.category === 'CHARACTER' ||
-        el.category === 'PET' ||
-        el.category === 'OBJECT'
-    );
+    // Handle updating character description
+    const handleDescriptionChange = async (newDescription: string) => {
+        if (!currentElementId) return;
 
+        try {
+            // Get current element
+            const character = selectedElements.find(el => el.id === currentElementId) ||
+                localCharacters.find(el => el.id === currentElementId);
+
+            if (!character) throw new Error('Character not found');
+
+            // Update description in API
+            const response = await fetch(`/api/my-world/elements/${currentElementId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: character.name,
+                    description: newDescription
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to update description');
+            }
+
+            // Update description in local state
+            updateElementDescription(currentElementId, newDescription);
+
+            // Also update in our local characters array
+            setLocalCharacters(prev =>
+                prev.map(char =>
+                    char.id === currentElementId ? {...char, description: newDescription} : char
+                )
+            );
+
+            toast.success("Description Updated", {
+                description: "Description has been updated successfully."
+            });
+
+            return true;
+        } catch (error) {
+            console.error('Error updating description:', error);
+            toast.error("Update Failed", {
+                description: "There was an error updating the description."
+            });
+            return false;
+        }
+    };
+
+    // Merge characters from all sources for display, prioritizing local state
+    const getCharactersForDisplay = () => {
+        // Start with local characters
+        let characters = [...localCharacters];
+
+        // Add any from selectedElements that aren't in local
+        const localIds = characters.map(c => c.id);
+        selectedElements.forEach(el => {
+            if (
+                (el.category === 'CHARACTER' || el.category === 'PET' || el.category === 'OBJECT') &&
+                !localIds.includes(el.id)
+            ) {
+                characters.push(el);
+                localIds.push(el.id);
+            }
+        });
+
+        // Filter out any characters that are still pending
+        characters = characters.filter(char => !pendingCharacters.includes(char.id));
+
+        return characters;
+    };
+
+    // Get characters for display
+    const charactersForDisplay = getCharactersForDisplay();
     const characterCount = charactersForDisplay.length;
 
     const containerVariants = {
@@ -458,16 +588,9 @@ export function CharactersStep() {
 
     // Get current element if editing
     const currentElement = currentElementId
-        ? selectedElements.find(el => el.id === currentElementId)
+        ? selectedElements.find(el => el.id === currentElementId) ||
+        localCharacters.find(el => el.id === currentElementId)
         : null;
-
-    // Find active element to check if we should show editor automatically
-    useEffect(() => {
-        // Auto-show editor for newly uploaded elements
-        if (lastUploadedElement && !isAnalyzingImage) {
-            handleEditAttributes(lastUploadedElement.id);
-        }
-    }, [lastUploadedElement, isAnalyzingImage]);
 
     // Check if we can proceed (at least one character selected)
     const canProceed = selectedCharacters.length > 0;
@@ -484,6 +607,28 @@ export function CharactersStep() {
         }
     };
 
+    // Handle editor close
+    const handleEditorClose = () => {
+        setIsEditorOpen(false);
+
+        // When the editor is closed after upload, make sure analyzing UI is hidden
+        if (lastUploadedElement && lastUploadedElement.id === currentElementId) {
+            setShowAnalyzingUI(false);
+            setIsProcessingComplete(true);
+
+            // Move the character from pending to selected if it hasn't been done yet
+            if (currentElementId && pendingCharacters.includes(currentElementId)) {
+                setPendingCharacters(prev => prev.filter(id => id !== currentElementId));
+                setSelectedCharacters(prev => {
+                    if (prev.length >= MAX_CHARACTERS) {
+                        return prev;
+                    }
+                    return [...prev, currentElementId];
+                });
+            }
+        }
+    };
+
     return (
         <div className="flex flex-col px-6 pb-8 justify-center">
             {/* Hidden file input element */}
@@ -492,7 +637,7 @@ export function CharactersStep() {
                 type="file"
                 accept="image/*"
                 onChange={handleFileSelect}
-                disabled={isAnalyzingImage || isLoading}
+                disabled={isAnalyzingImage || isLoading || showAnalyzingUI}
                 style={{ display: 'none' }}
                 id="character-upload-input"
             />
@@ -503,7 +648,6 @@ export function CharactersStep() {
                     animateIn={true}
                     heightClass="min-h-[60px]"
                     position="left"
-                    // textClassName="text-sm" // Make text smaller to fit more content
                 />
             </div>
 
@@ -550,8 +694,124 @@ export function CharactersStep() {
                     </motion.div>
                 )}
 
-                {/* Show upload area when no characters and not analyzing */}
-                {(characterCount === 0 && !showAnalyzingUI) && (
+                {/* Display characters - ALWAYS shown, regardless of analyzing state */}
+                <AnimatePresence>
+                    {charactersForDisplay.map((character) => {
+                        const isSelected = selectedCharacters.includes(character.id);
+                        const isPrimary = character.id === primaryCharacterId;
+                        const isSelectable = isSelected || selectedCharacters.length < MAX_CHARACTERS;
+
+                        return (
+                            <motion.div
+                                key={character.id}
+                                variants={itemVariants}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ duration: 0.3 }}
+                                className="mb-3"
+                            >
+                                <div
+                                    onClick={() => {
+                                        if (!showAnalyzingUI && (isSelectable || isSelected)) {
+                                            toggleCharacterSelection(character.id);
+                                        }
+                                    }}
+                                    className={`relative flex items-center p-3 bg-white rounded-xl border-2 ${
+                                        isSelected
+                                            ? 'border-[#4CAF50] shadow-md'
+                                            : 'border-gray-200 shadow-sm'
+                                    } ${
+                                        !showAnalyzingUI && (isSelectable || isSelected)
+                                            ? 'hover:bg-gray-100 cursor-pointer'
+                                            : showAnalyzingUI ? 'opacity-50' : 'opacity-70 cursor-not-allowed'
+                                    } transition-all`}
+                                >
+                                    {/* Crown icon in top left with tooltip */}
+                                    <div className="absolute -top-2 -left-2">
+                                        <TooltipProvider>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (!showAnalyzingUI) {
+                                                                setPrimaryCharacter(character.id);
+                                                            }
+                                                        }}
+                                                        className={`w-6 h-6 rounded-full flex items-center justify-center shadow-sm ${
+                                                            isPrimary
+                                                                ? 'bg-amber-400'
+                                                                : 'bg-gray-300 hover:bg-gray-400'
+                                                        } ${showAnalyzingUI ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                                        disabled={showAnalyzingUI}
+                                                    >
+                                                        <Crown className="w-3.5 h-3.5 text-white" />
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    {isPrimary ? 'Primary character' : 'Set as primary character'}
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </div>
+
+                                    <div className="relative w-14 h-14 rounded-md overflow-hidden mr-3 flex-shrink-0">
+                                        {character.imageUrl ? (
+                                            <img
+                                                src={character.imageUrl}
+                                                alt={character.name}
+                                                className="w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                                                {getCharacterIcon(character)}
+                                            </div>
+                                        )}
+
+                                        {isSelected && (
+                                            <div className="absolute bottom-0 left-0 right-0 h-2 bg-[#4CAF50]"></div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1">
+                                        <div className="flex items-center">
+                                            <h4 className="font-medium text-gray-800">
+                                                {character.name}
+                                            </h4>
+                                        </div>
+                                        <p className="text-sm text-gray-500 line-clamp-1">
+                                            {character.category === 'PET' && <span className="mr-1">🐾</span>}
+                                            {character.category === 'OBJECT' && <span className="mr-1">🧸</span>}
+                                            {character.description || 'No description'}
+                                        </p>
+                                    </div>
+
+                                    {/* Edit button - moved to the right */}
+                                    <div className="flex items-center">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (!showAnalyzingUI) {
+                                                    handleEditAttributes(character.id);
+                                                }
+                                            }}
+                                            className={`p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors ${showAnalyzingUI ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                            disabled={showAnalyzingUI}
+                                        >
+                                            <Pencil className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        );
+                    })}
+                </AnimatePresence>
+
+                {/* Show empty state upload area only when no characters exist */}
+                {characterCount === 0 && !showAnalyzingUI && (
                     <motion.div variants={itemVariants} className="mb-4">
                         <button
                             type="button"
@@ -590,134 +850,33 @@ export function CharactersStep() {
                     </motion.div>
                 )}
 
-                {/* Display characters with selection capability */}
-                <AnimatePresence>
-                    {charactersForDisplay.map((character) => {
-                        const isSelected = selectedCharacters.includes(character.id);
-                        const isPrimary = character.id === primaryCharacterId;
-                        const isSelectable = isSelected || selectedCharacters.length < MAX_CHARACTERS;
-
-                        return (
-                            <motion.div
-                                key={character.id}
-                                variants={itemVariants}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                transition={{ duration: 0.3 }}
-                                className="mb-3"
-                            >
-                                <div
-                                    onClick={() => {
-                                        if (isSelectable || isSelected) {
-                                            toggleCharacterSelection(character.id);
-                                        }
-                                    }}
-                                    className={`relative flex items-center p-3 bg-white rounded-xl border ${
-                                        isSelected
-                                            ? 'border-[#4CAF50] shadow-md'
-                                            : 'border-gray-200 shadow-sm'
-                                    } ${
-                                        isSelectable ? 'hover:border-[#4CAF50] cursor-pointer' : 'opacity-70 cursor-not-allowed'
-                                    } transition-all`}
-                                >
-                                    {/* Primary character crown - now in top left */}
-                                    {isPrimary && (
-                                        <div className="absolute -top-2 -left-2 w-6 h-6 bg-amber-400 rounded-full flex items-center justify-center shadow-sm">
-                                            <Crown className="w-3.5 h-3.5 text-white" />
-                                        </div>
-                                    )}
-
-                                    <div className="relative w-14 h-14 rounded-md overflow-hidden mr-3 flex-shrink-0">
-                                        {character.imageUrl ? (
-                                            <img
-                                                src={character.imageUrl}
-                                                alt={character.name}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                                                {getCharacterIcon(character)}
-                                            </div>
-                                        )}
-
-                                        {isSelected && (
-                                            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-[#4CAF50]"></div>
-                                        )}
-                                    </div>
-
-                                    <div className="flex-1">
-                                        <div className="flex items-center">
-                                            <h4 className="font-medium text-gray-800">
-                                                {character.name}
-                                            </h4>
-                                        </div>
-                                        <p className="text-sm text-gray-500 line-clamp-1">
-                                            {character.category === 'PET' && <span className="mr-1">🐾</span>}
-                                            {character.category === 'OBJECT' && <span className="mr-1">🧸</span>}
-                                            {character.description || 'No description'}
-                                        </p>
-                                    </div>
-
-                                    {/* Character action buttons */}
-                                    <div className="flex items-center space-x-1">
-                                        {/* Crown button - shows if character is not primary */}
-                                        {!isPrimary && (
-                                            <TooltipProvider>
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setPrimaryCharacter(character.id);
-                                                            }}
-                                                            className="p-2 rounded-full text-gray-400 hover:text-amber-400 hover:bg-amber-50 transition-colors"
-                                                        >
-                                                            <Crown className="w-5 h-5" />
-                                                        </button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        <p>Set as primary character</p>
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </TooltipProvider>
-                                        )}
-
-                                        {/* Edit button */}
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleEditAttributes(character.id);
-                                            }}
-                                            className="p-2 text-gray-500 hover:text-[#4CAF50] hover:bg-[#4CAF50]/10 rounded-full transition-colors"
-                                        >
-                                            <Pencil className="w-5 h-5" />
-                                        </button>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        );
-                    })}
-                </AnimatePresence>
-
-                {/* "Add another character" button */}
-                {characterCount > 0 && !showAnalyzingUI && characterCount < MAX_CHARACTERS && (
+                {/* "Add another character" button - always show when characters exist and not analyzing */}
+                {characterCount > 0 && !showAnalyzingUI && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.3 }}
-                        className="mt-2"
+                        className="mt-4"
                     >
                         <button
                             type="button"
                             onClick={triggerFileSelect}
-                            disabled={isAnalyzingImage || isLoading}
-                            className="flex items-center justify-center w-full p-3 rounded-lg border border-gray-200 text-gray-600 hover:text-[#4CAF50] hover:border-[#4CAF50]/50 hover:bg-[#4CAF50]/5 transition-colors"
+                            disabled={isAnalyzingImage || isLoading || showAnalyzingUI}
+                            className={`flex items-center justify-center w-full p-3 rounded-lg border-2 border-gray-200 
+                                ${characterCount >= MAX_CHARACTERS || isAnalyzingImage || isLoading || showAnalyzingUI
+                                ? 'text-gray-400 cursor-not-allowed'
+                                : 'text-gray-600 hover:bg-gray-100 hover:border-gray-300 cursor-pointer'
+                            } transition-colors`}
                         >
                             <Plus className="w-5 h-5 mr-2" />
-                            <span>Add another character</span>
+                            <span>
+                                {showAnalyzingUI
+                                    ? 'Processing image...'
+                                    : characterCount >= MAX_CHARACTERS
+                                        ? 'Add (max reached)'
+                                        : 'Add another character'
+                                }
+                            </span>
                         </button>
                     </motion.div>
                 )}
@@ -730,7 +889,7 @@ export function CharactersStep() {
                     className="mt-4 text-center text-sm text-gray-500"
                 >
                     <span className={selectedCharacters.length === MAX_CHARACTERS ? 'text-[#4CAF50] font-medium' : ''}>
-                        {selectedCharacters.length} / {MAX_CHARACTERS} Characters Selected
+                        {selectedCharacters.length} / {MAX_CHARACTERS} characters selected
                     </span>
                 </motion.div>
             </motion.div>
@@ -743,9 +902,9 @@ export function CharactersStep() {
             >
                 <Button
                     onClick={goToNextStep}
-                    disabled={!canProceed || isAnalyzingImage || isLoading}
+                    disabled={!canProceed || isAnalyzingImage || isLoading || showAnalyzingUI || pendingCharacters.length > 0}
                     className={`w-full py-6 text-lg font-medium rounded-full ${
-                        canProceed
+                        canProceed && !showAnalyzingUI && pendingCharacters.length === 0
                             ? 'bg-[#4CAF50] hover:bg-[#43a047] text-white cursor-pointer shadow-md hover:shadow-lg'
                             : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                     } transition-all duration-300`}
@@ -763,7 +922,7 @@ export function CharactersStep() {
             {currentElement && (
                 <AttributesEditor
                     isOpen={isEditorOpen}
-                    onClose={() => setIsEditorOpen(false)}
+                    onClose={handleEditorClose}
                     elementId={currentElement.id}
                     elementName={currentElement.name}
                     imageUrl={currentElement.imageUrl}
@@ -772,7 +931,11 @@ export function CharactersStep() {
                     onSave={handleSaveAttributes}
                     onNameChange={handleNameChange}
                     isLoading={isLoadingAttributes}
-                />
+                    isPrimary={currentElement.id === primaryCharacterId}
+                    onSetPrimary={setPrimaryCharacter}
+                    description={currentElement.description || ''}
+                    showToasts={false} // Don't show toasts in the component
+                    onDescriptionChange={handleDescriptionChange as (description: string) => Promise<void>}                />
             )}
         </div>
     );
