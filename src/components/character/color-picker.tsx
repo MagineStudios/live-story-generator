@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 
 interface ColorPickerProps {
     label: string;
@@ -39,21 +39,26 @@ export function ColorPicker({ label, initialColor, onChange, commonColors = [] }
 
     return (
         <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-                {label}
-            </label>
+            {label && (
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    {label}
+                </label>
+            )}
 
             <div className="relative">
                 <button
                     type="button"
                     onClick={() => setIsPanelOpen(!isPanelOpen)}
-                    className="flex items-center w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#4CAF50] cursor-pointer"
+                    className="flex items-center justify-between w-full p-2.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#4CAF50] hover:border-gray-400 transition-colors cursor-pointer"
                 >
-                    <div
-                        className="w-6 h-6 rounded-full mr-3 border border-gray-200"
-                        style={{ backgroundColor: selectedColor }}
-                    />
-                    <span className="text-gray-800">{selectedColor}</span>
+                    <div className="flex items-center">
+                        <div
+                            className="w-6 h-6 rounded-full mr-3 border border-gray-200"
+                            style={{ backgroundColor: selectedColor }}
+                        />
+                        <span className="text-gray-800">{selectedColor}</span>
+                    </div>
+                    <ChevronDown size={16} className={`transition-transform ${isPanelOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 <AnimatePresence>
@@ -63,18 +68,19 @@ export function ColorPicker({ label, initialColor, onChange, commonColors = [] }
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
                             transition={{ duration: 0.2 }}
-                            className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-2"
+                            className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-3"
                         >
-                            <div className="grid grid-cols-5 gap-2">
+                            <div className="grid grid-cols-5 gap-2.5">
                                 {colors.map((color) => (
                                     <button
                                         key={color}
                                         type="button"
                                         onClick={() => handleColorSelect(color)}
-                                        className={`w-full aspect-square rounded-md border focus:outline-none focus:ring-2 focus:ring-[#4CAF50] relative ${
+                                        className={`w-full aspect-square rounded-md border focus:outline-none focus:ring-2 focus:ring-[#4CAF50] relative cursor-pointer transition-transform hover:scale-105 ${
                                             selectedColor === color ? 'ring-2 ring-[#4CAF50]' : 'border-gray-200'
                                         }`}
                                         style={{ backgroundColor: color }}
+                                        title={color}
                                     >
                                         {selectedColor === color && (
                                             <div className="absolute inset-0 flex items-center justify-center">
@@ -85,7 +91,7 @@ export function ColorPicker({ label, initialColor, onChange, commonColors = [] }
                                 ))}
                             </div>
 
-                            <div className="mt-2">
+                            <div className="mt-3">
                                 <input
                                     type="text"
                                     value={selectedColor}
@@ -95,7 +101,7 @@ export function ColorPicker({ label, initialColor, onChange, commonColors = [] }
                                             onChange(selectedColor);
                                         }
                                     }}
-                                    className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                                    className="w-full p-2.5 border border-gray-300 rounded-md text-sm cursor-text"
                                     placeholder="#000000"
                                 />
                             </div>
