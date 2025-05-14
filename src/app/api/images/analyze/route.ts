@@ -33,21 +33,23 @@ export async function POST(req: NextRequest) {
         if (!Object.values(ElementCategory).includes(category)) {
             return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
         }
+
+        // Updated prompts with enhanced fields for each category
         let prompt = '';
         if (category === 'CHARACTER') {
-            prompt = `Analyze this image of a character and provide a detailed description. 
+            prompt = `Analyze this image of a person and provide a detailed description.
       Extract the following attributes in valid JSON format:
       {
-        "description": "Comprehensive description of the character",
+        "description": "Comprehensive description of the person",
         "suggestedName": "Suggested name for the character",
-        "age": "Approximate age or age range",
-        "gender": "Gender, if apparent",
+        "gender": "Gender if apparent",
+        "age": "Approximate age",
         "skinColor": "Skin color as hex code",
         "hairColor": "Hair color as hex code",
-        "hairStyle": "Description of the hair style",
-        "eyeColor": "Eye color as hex code",
+        "hairStyle": "Description of hair style",
+        "eyeColor": "Eye color as hex code if visible",
         "ethnicity": "Ethnicity if apparent",
-        "outfit": "Description of clothing/outfit",
+        "outfit": "Description of clothing",
         "accessories": "Any notable accessories"
       }`;
         } else if (category === 'PET') {
@@ -56,19 +58,48 @@ export async function POST(req: NextRequest) {
       {
         "description": "Comprehensive description of the pet",
         "suggestedName": "Suggested name for the pet",
+        "breed": "Breed or species if identifiable",
+        "age": "Approximate age or life stage (puppy, kitten, adult, etc.)",
+        "gender": "Gender if apparent",
         "furColor": "Fur color as hex code",
         "furStyle": "Description of the fur style",
+        "eyeColor": "Eye color as hex code if visible",
         "markings": "Any notable markings or patterns",
-        "breed": "Breed or species if identifiable",
-        "age": "Approximate age or life stage (puppy, kitten, adult, etc.)"
+        "collar": "Description of collar including color and any tags or names visible",
+        "accessories": "Any notable accessories"
       }`;
-        } else {
-            prompt = `Analyze this image of a ${category.toLowerCase()} and provide a detailed description.
-      Include a suggested name for this ${category.toLowerCase()}.
+        } else if (category === 'OBJECT') {
+            prompt = `Analyze this image of an object/toy and provide a detailed description.
       Extract the following attributes in valid JSON format:
       {
-        "description": "Comprehensive description",
-        "suggestedName": "Suggested name"
+        "description": "Comprehensive description of the object or toy",
+        "suggestedName": "Suggested name for this object",
+        "type": "Type of object (toy, doll, stuffed animal, etc.)",
+        "material": "Primary material(s) the object is made from",
+        "primaryColor": "Primary color as hex code",
+        "secondaryColor": "Secondary color as hex code if applicable",
+        "details": "Notable visual details",
+        "accessories": "Any accessories or attachments"
+      }`;
+        } else if (category === 'LOCATION') {
+            prompt = `Analyze this image of a location and provide a detailed description.
+      Extract the following attributes in valid JSON format:
+      {
+        "description": "Comprehensive description of the location",
+        "suggestedName": "Suggested name for this location",
+        "locationType": "Type of location (indoor, outdoor, etc.)",
+        "setting": "Setting details (urban, rural, fantasy, etc.)",
+        "timeOfDay": "Apparent time of day",
+        "weather": "Weather conditions if applicable",
+        "notable": "Notable elements in the scene"
+      }`;
+        } else {
+            prompt = `Analyze this image and provide a detailed description.
+      Extract the following attributes in valid JSON format:
+      {
+        "description": "Comprehensive description of what's in the image",
+        "suggestedName": "Suggested name or title for this image",
+        "category": "Suggested category (CHARACTER, PET, OBJECT, LOCATION)"
       }`;
         }
 
@@ -105,8 +136,8 @@ export async function POST(req: NextRequest) {
             },
         });
 
-        // If it's a character or pet, store the additional attributes
-        if (category === 'CHARACTER' || category === 'PET') {
+        // If it's a character, pet or object, store the additional attributes
+        if (category === 'CHARACTER' || category === 'PET' || category === 'OBJECT') {
             // Create a copy of analysis and delete the fields we don't store in CharacterAttributes
             const attributesToStore = { ...analysis };
             delete attributesToStore.description;
@@ -138,19 +169,19 @@ export async function POST(req: NextRequest) {
 function getPromptForCategory(category: ElementCategory): string {
     switch (category) {
         case ElementCategory.CHARACTER:
-            return "Describe this character in under 50 words, focusing exclusively on precise visual details like: age, ethnicity, face, skin color, hair color, hair style, weight, eye color, clothing, and one distinctive feature. Do not include speculation about personality traits, life story, or non-visual characteristics. Just provide objective visual details. Format as a single paragraph. Don't say the character appears to be. Just describe.";
+            return "Describe this character in under 50 words, focusing exclusively on precise visual details like: age, ethnicity, face, skin color, hair color, hair style, weight, eye color, clothing, and one distinctive feature. If the character has a name visible in the image, mention it.";
 
         case ElementCategory.PET:
-            return "Describe this animal/pet in under 50 words, focusing exclusively on precise visual details like: species, breed, size, color, eye color, markings, fur/feathers, fur color, and one distinctive feature. Do not include personality traits or narrative elements. Just provide objective visual details. Format as a single paragraph. Don't say appears to be. Just describe.";
+            return "Describe this animal/pet in under 50 words, focusing exclusively on precise visual details like: species, breed, size, color, eye color, markings, fur/feathers, fur color, any collar or accessories, and one distinctive feature. If the pet has a name visible in the image, mention it.";
 
         case ElementCategory.LOCATION:
-            return "Describe this location in under 50 words, focusing exclusively on precise visual details like: environment type, key structures, colors, lighting, atmosphere, and one distinctive feature. Do not include historical context or non-visual elements. Just provide objective visual details. Format as a single paragraph. Don't say appears to be. Just describe.";
+            return "Describe this location in under 50 words, focusing exclusively on precise visual details like: environment type, key structures, colors, lighting, atmosphere, and one distinctive feature. Format as a simple, factual description.";
 
         case ElementCategory.OBJECT:
-            return "Describe this object in under 50 words, focusing exclusively on precise visual details like: what it is, size, shape, color, material, condition, and one distinctive feature. If the character is known or recognizable, mention the name. Do not include history, function, or non-visual characteristics. Just provide objective visual details. Format as a single paragraph. Don't say appears to be. Just describe.";
+            return "Describe this object in under 50 words, focusing exclusively on precise visual details like: what it is, size, shape, color, material, condition, and one distinctive feature. If the object has text or a brand name visible, mention it.";
 
         default:
-            return "Provide a precise, objective visual description of what you see in under 50 words. Focus only on physical, visual details. Avoid speculation about non-visual characteristics. Format as a single paragraph.";
+            return "Provide a precise, objective visual description of what you see in under 50 words. Focus only on physical, visual details. Avoid speculation about non-visual characteristics. Format as a simple, factual description.";
     }
 }
 

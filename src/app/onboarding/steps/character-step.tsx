@@ -24,9 +24,22 @@ interface CharacterAttributes {
     furStyle?: string;
     markings?: string;
     breed?: string;
+    material?: string; // For toy/object characters
     outfit?: string;
     accessories?: string;
 }
+
+// Helper function to determine character type
+const getCharacterType = (category: string, description?: string) => {
+    if (category === 'PET') return 'pet';
+    if (category === 'OBJECT') return 'object';
+    if (description?.toLowerCase().includes('toy') ||
+        description?.toLowerCase().includes('doll') ||
+        description?.toLowerCase().includes('stuffed')) {
+        return 'toy';
+    }
+    return 'human';
+};
 
 export function CharactersStep() {
     const { userId } = useAuth();
@@ -37,6 +50,7 @@ export function CharactersStep() {
         isAnalyzingImage,
         goToNextStep,
         updateElementName,
+        updateElementDescription,
         addElement
     } = useOnboarding();
 
@@ -61,7 +75,7 @@ export function CharactersStep() {
     const MAX_CHARACTERS = 3;
 
     const baseText = "Who should be in your story? Select up to 3 characters!";
-    const uploadingText = "Analyzing your character... This will just take a moment!";
+    const uploadingText = "Analyzing your image... This will just take a moment!";
     const completedText = "Perfect! Your character has been added.";
     const loadingText = "Loading your characters...";
     const selectMoreText = "Your character has been selected as primary. You can select up to 2 more characters.";
@@ -86,7 +100,11 @@ export function CharactersStep() {
 
             try {
                 // Check for existing characters in uploadedElements first
-                const existingCharacters = uploadedElements.filter(el => el.category === 'CHARACTER');
+                const existingCharacters = uploadedElements.filter(el =>
+                    el.category === 'CHARACTER' ||
+                    el.category === 'PET' ||
+                    el.category === 'OBJECT'
+                );
 
                 // If we already have characters in context, use those
                 if (existingCharacters.length > 0) {
@@ -97,7 +115,7 @@ export function CharactersStep() {
                     animateText("Welcome back! Here are your characters.");
                 } else if (userId) {
                     // Only fetch from API if user is logged in and we don't have characters
-                    const response = await fetch('/api/my-world/elements?category=CHARACTER');
+                    const response = await fetch('/api/my-world/elements?categories=CHARACTER,PET,OBJECT');
                     if (response.ok) {
                         const { elements } = await response.json();
 
@@ -204,7 +222,7 @@ export function CharactersStep() {
         });
     };
 
-    // Handle file upload trigger with label
+    // Handle file upload trigger
     const triggerFileSelect = () => {
         if (fileInputRef.current) {
             fileInputRef.current.click();
@@ -216,12 +234,19 @@ export function CharactersStep() {
         if (!file) return;
 
         try {
+            // Use the appropriate category for the upload (vision API will determine specifics)
+            // For toys/objects, use OBJECT category - otherwise default to CHARACTER
+            // Let the backend image analysis determine if it's a human, pet, or object/toy
+
             const newElement = await addUploadedImage(file, 'CHARACTER');
+
             if (newElement) {
                 setLastUploadedElement(newElement);
 
-                // Set as primary character
-                setPrimaryCharacter(newElement.id);
+                // Set as primary character if it's the first one
+                if (!primaryCharacterId) {
+                    setPrimaryCharacter(newElement.id);
+                }
 
                 // After a delay, open the attributes editor
                 setTimeout(() => {
@@ -231,7 +256,7 @@ export function CharactersStep() {
         } catch (error) {
             console.error('Error uploading image:', error);
             toast.error("Upload Failed", {
-                description: "There was an error uploading your character image."
+                description: "There was an error uploading your image."
             });
         }
 
@@ -275,7 +300,7 @@ export function CharactersStep() {
 
             if (response.ok) {
                 toast.success("Success!", {
-                    description: "Character details saved successfully."
+                    description: "Details saved successfully."
                 });
 
                 // Update the displayed text to confirm success
@@ -286,7 +311,7 @@ export function CharactersStep() {
         } catch (error) {
             console.error('Error saving attributes:', error);
             toast.error("Save Failed", {
-                description: "There was an error saving your character details."
+                description: "There was an error saving your details."
             });
         }
     };
@@ -313,17 +338,21 @@ export function CharactersStep() {
             updateElementName(currentElementId, newName);
 
             toast.success("Name Updated", {
-                description: "Character name has been updated successfully."
+                description: "Name has been updated successfully."
             });
         } catch (error) {
             console.error('Error updating name:', error);
             toast.error("Update Failed", {
-                description: "There was an error updating the character name."
+                description: "There was an error updating the name."
             });
         }
     };
 
-    const characterCount = selectedElements.filter(el => el.category === 'CHARACTER').length;
+    const characterCount = selectedElements.filter(el =>
+        el.category === 'CHARACTER' ||
+        el.category === 'PET' ||
+        el.category === 'OBJECT'
+    ).length;
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -368,6 +397,21 @@ export function CharactersStep() {
         );
     };
 
+    // Helper to get character icon/emoji based on type
+    const getCharacterIcon = (character: any) => {
+        const type = getCharacterType(character.category, character.description);
+
+        switch (type) {
+            case 'pet':
+                return <span className="text-xl">🐾</span>;
+            case 'toy':
+            case 'object':
+                return <span className="text-xl">🧸</span>;
+            default:
+                return <User className="w-6 h-6 text-gray-500" />;
+        }
+    };
+
     return (
         <div className="flex flex-col px-6 pb-8 justify-center">
             {/* Hidden file input element */}
@@ -395,13 +439,13 @@ export function CharactersStep() {
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <div className="flex items-center text-sm text-gray-500">
+                            <div className="flex items-center text-sm text-gray-500 cursor-pointer">
                                 <Info size={16} className="mr-1" />
-                                About Character Selection
+                                About Characters
                             </div>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs">
-                            <p className="mb-2">Select up to 3 characters for your story.</p>
+                            <p className="mb-2">Select up to 3 characters for your story. These can be humans, pets, toys, or other objects!</p>
                             <p className="mb-2">The <span className="font-medium">Primary</span> character (marked with a crown) will be the main focus of your story.</p>
                             <p>Click the crown icon on any character to make them primary.</p>
                         </TooltipContent>
@@ -446,7 +490,7 @@ export function CharactersStep() {
                                         ? 'Please wait while we process your image'
                                         : isLoading
                                             ? 'Please wait...'
-                                            : 'JPG, PNG or WebP, max 5MB'}
+                                            : 'People, pets, toys - JPG, PNG or WebP, max 5MB'}
                                 </p>
                             </div>
                         </label>
@@ -456,7 +500,11 @@ export function CharactersStep() {
                 {/* Display characters with selection capability */}
                 <AnimatePresence>
                     {selectedElements
-                        .filter(el => el.category === 'CHARACTER')
+                        .filter(el =>
+                            el.category === 'CHARACTER' ||
+                            el.category === 'PET' ||
+                            el.category === 'OBJECT'
+                        )
                         .map((character) => {
                             const isSelected = selectedCharacters.includes(character.id);
                             const isPrimary = character.id === primaryCharacterId;
@@ -477,8 +525,8 @@ export function CharactersStep() {
                                             ${isSelected
                                             ? 'border-[#4CAF50] shadow-md ring-1 ring-[#4CAF50]/30'
                                             : isDisabled
-                                                ? 'border-gray-200 shadow-sm opacity-50 cursor-not-allowed'
-                                                : 'border-gray-200 shadow-sm hover:border-gray-300 cursor-pointer'
+                                                ? 'border-gray-200 shadow-sm opacity-50'
+                                                : 'border-gray-200 shadow-sm hover:border-gray-300'
                                         } 
                                             ${isPrimary ? 'bg-[#4CAF50]/5' : ''}
                                             transition-all`}
@@ -489,6 +537,9 @@ export function CharactersStep() {
                                                 animateText(`You've already selected ${MAX_CHARACTERS} characters. Deselect one first to select this character.`);
                                             }
                                         }}
+                                        style={{
+                                            cursor: isDisabled ? 'not-allowed' : 'pointer'
+                                        }}
                                     >
                                         {/* Primary character indicator and controller */}
                                         <TooltipProvider>
@@ -498,13 +549,21 @@ export function CharactersStep() {
                                                         type="button"
                                                         className={`absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center
                                                             ${isPrimary
-                                                            ? 'bg-[#4CAF50] text-white'
-                                                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                                            ? 'bg-amber-400 text-white'
+                                                            : isDisabled
+                                                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                                                : 'bg-gray-100 text-amber-400 hover:bg-amber-100'
                                                         }`}
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            setPrimaryCharacter(character.id);
+                                                            if (!isDisabled) {
+                                                                setPrimaryCharacter(character.id);
+                                                            }
                                                         }}
+                                                        style={{
+                                                            cursor: isDisabled ? 'not-allowed' : 'pointer'
+                                                        }}
+                                                        disabled={isDisabled}
                                                     >
                                                         <Crown size={14} />
                                                     </button>
@@ -512,17 +571,13 @@ export function CharactersStep() {
                                                 <TooltipContent>
                                                     {isPrimary
                                                         ? "This is the primary character in your story"
-                                                        : "Click to make this the primary character"}
+                                                        : isDisabled
+                                                            ? "Select this character first to make it primary"
+                                                            : "Click to make this the primary character"
+                                                    }
                                                 </TooltipContent>
                                             </Tooltip>
                                         </TooltipProvider>
-
-                                        {/* Selection indicator */}
-                                        {isSelected && (
-                                            <div className="absolute top-2 right-10 w-5 h-5 bg-[#4CAF50] text-white rounded-full flex items-center justify-center">
-                                                <CheckCircle size={12} />
-                                            </div>
-                                        )}
 
                                         <div className="w-14 h-14 rounded-md overflow-hidden mr-3 flex-shrink-0 ml-6">
                                             {character.imageUrl ? (
@@ -533,7 +588,7 @@ export function CharactersStep() {
                                                 />
                                             ) : (
                                                 <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                                                    <User className="w-6 h-6 text-gray-500" />
+                                                    {getCharacterIcon(character)}
                                                 </div>
                                             )}
                                         </div>
@@ -544,7 +599,9 @@ export function CharactersStep() {
                                                 {isPrimary && <span className="text-xs ml-2">(Primary)</span>}
                                             </h4>
                                             <p className="text-sm text-gray-500 line-clamp-1">
-                                                {character.description || 'No description'}
+                                                {character.category === 'PET' && <span className="mr-1">🐾</span>}
+                                                {character.category === 'OBJECT' && <span className="mr-1">🧸</span>}
+                                                {character.description || 'Character'}
                                             </p>
                                         </div>
 
@@ -553,9 +610,17 @@ export function CharactersStep() {
                                             type="button"
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                handleEditAttributes(character.id);
+                                                if (!isDisabled) {
+                                                    handleEditAttributes(character.id);
+                                                }
                                             }}
-                                            className="ml-2 p-2 text-gray-500 hover:text-[#4CAF50] hover:bg-[#4CAF50]/10 rounded-full transition-colors cursor-pointer"
+                                            className={`ml-2 p-2 text-gray-500 rounded-full transition-colors
+                                                ${isDisabled
+                                                ? 'cursor-not-allowed text-gray-300'
+                                                : 'hover:text-[#4CAF50] hover:bg-[#4CAF50]/10 cursor-pointer'
+                                            }
+                                            `}
+                                            disabled={isDisabled}
                                         >
                                             <Pencil className="w-5 h-5" />
                                         </button>
@@ -574,7 +639,7 @@ export function CharactersStep() {
                     </div>
                 )}
 
-                {/* "Add another character" button */}
+                {/* "Add character" button - unified for all character types */}
                 {characterCount > 0 && !isAnalyzingImage && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
@@ -587,7 +652,7 @@ export function CharactersStep() {
                             className="flex items-center justify-center w-full p-3 rounded-lg border border-gray-200 text-gray-600 hover:text-[#4CAF50] hover:border-[#4CAF50]/50 hover:bg-[#4CAF50]/5 transition-colors cursor-pointer"
                         >
                             <Plus className="w-5 h-5 mr-2" />
-                            <span>Add another character</span>
+                            <span>Add Character</span>
                         </label>
                     </motion.div>
                 )}
@@ -617,7 +682,7 @@ export function CharactersStep() {
                 </Button>
             </motion.div>
 
-            {/* Character attributes editor */}
+            {/* Character attributes editor - we let the component determine the UI based on character type */}
             {currentElement && (
                 <AttributesEditor
                     isOpen={isEditorOpen}
@@ -625,7 +690,7 @@ export function CharactersStep() {
                     elementId={currentElement.id}
                     elementName={currentElement.name}
                     imageUrl={currentElement.imageUrl}
-                    isCharacter={true}
+                    characterType={getCharacterType(currentElement.category, currentElement.description)}
                     initialAttributes={attributesData || undefined}
                     onSave={handleSaveAttributes}
                     onNameChange={handleNameChange}
