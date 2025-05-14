@@ -5,10 +5,10 @@ import { prisma } from '@/lib/prisma';
 // This handles GET requests to /api/my-world/elements/[id]/attributes
 export async function GET(
     req: NextRequest,
-    context: { params: { id: string } }
+    context: any
 ) {
     try {
-        const { id } = await context.params;
+        const { id } = await context.params as { id: string };
         const { userId } = await auth();
         // For attributes, we'll allow guest users to fetch their own elements
 
@@ -81,13 +81,12 @@ export async function GET(
 // This handles PUT requests to update attributes
 export async function PUT(
     req: NextRequest,
-    context: { params: { id: string } }
+    context: any
 ) {
     try {
-        const { userId } = await auth();
-
         // Get the element ID from the URL parameters
-        const { id } = await context.params;
+        const { id } = await context.params as { id: string };
+        const { userId } = await auth();
         const elementId = id;
 
         if (!elementId) {
