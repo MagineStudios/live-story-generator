@@ -3,10 +3,17 @@ import OpenAI from 'openai';
 import { auth } from '@clerk/nextjs/server';
 import { ElementCategory } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
     organization: process.env.OPENAI_ORG_ID,
+});
+
+const requestSchema = z.object({
+    imageUrl: z.string().url(),
+    category: z.enum(['CHARACTER', 'PET', 'LOCATION', 'OBJECT']),
+    elementId: z.string(),
 });
 
 export async function POST(req: NextRequest) {
@@ -16,7 +23,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { imageUrl, category, elementId } = await req.json();
+        const body = await req.json();
+        const { imageUrl, category, elementId } = requestSchema.parse(body);
 
         if (!imageUrl) {
             return NextResponse.json({ error: 'Missing imageUrl' }, { status: 400 });
@@ -25,29 +33,45 @@ export async function POST(req: NextRequest) {
         if (!Object.values(ElementCategory).includes(category)) {
             return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
         }
-
-        // Get existing user elements for recognition
-        const userElements = await prisma.myWorldElement.findMany({
-            where: {
-                userId,
-                category: ElementCategory.CHARACTER, // Only compare characters for recognition
-            },
-            select: {
-                id: true,
-                name: true,
-                imageUrl: true,
-            }
-        });
-
-        // If we have characters, include them in the prompt for recognition
-        let characterContext = '';
-        if (userElements.length > 0 && category === ElementCategory.CHARACTER) {
-            characterContext = `The user has the following existing characters in their library: ${
-                userElements.map(el => `"${el.name}" (ID: ${el.id})`).join(', ')
-            }. If the person in this image matches any of these characters, please mention that in your response.`;
+        let prompt = '';
+        if (category === 'CHARACTER') {
+            prompt = `Analyze this image of a character and provide a detailed description. 
+      Extract the following attributes in valid JSON format:
+      {
+        "description": "Comprehensive description of the character",
+        "suggestedName": "Suggested name for the character",
+        "age": "Approximate age or age range",
+        "gender": "Gender, if apparent",
+        "skinColor": "Skin color as hex code",
+        "hairColor": "Hair color as hex code",
+        "hairStyle": "Description of the hair style",
+        "eyeColor": "Eye color as hex code",
+        "ethnicity": "Ethnicity if apparent",
+        "outfit": "Description of clothing/outfit",
+        "accessories": "Any notable accessories"
+      }`;
+        } else if (category === 'PET') {
+            prompt = `Analyze this image of a pet and provide a detailed description.
+      Extract the following attributes in valid JSON format:
+      {
+        "description": "Comprehensive description of the pet",
+        "suggestedName": "Suggested name for the pet",
+        "furColor": "Fur color as hex code",
+        "furStyle": "Description of the fur style",
+        "markings": "Any notable markings or patterns",
+        "breed": "Breed or species if identifiable",
+        "age": "Approximate age or life stage (puppy, kitten, adult, etc.)"
+      }`;
+        } else {
+            prompt = `Analyze this image of a ${category.toLowerCase()} and provide a detailed description.
+      Include a suggested name for this ${category.toLowerCase()}.
+      Extract the following attributes in valid JSON format:
+      {
+        "description": "Comprehensive description",
+        "suggestedName": "Suggested name"
+      }`;
         }
 
-        const prompt = getPromptForCategory(category);
         console.log("Analysis text prompt:", prompt);
 
         const response = await openai.chat.completions.create({
@@ -66,76 +90,48 @@ export async function POST(req: NextRequest) {
                     ],
                 },
             ],
-            max_tokens: 500,
+            response_format: { type: "json_object" }
+        });
+        // Parse the response
+        const analysisText = response.choices[0]?.message?.content || '{}';
+        const analysis = JSON.parse(analysisText);
+
+        // Update the element with the description
+        await prisma.myWorldElement.update({
+            where: { id: elementId },
+            data: {
+                name: analysis.suggestedName || `My ${category.toLowerCase()}`,
+                description: analysis.description || ''
+            },
         });
 
-        const analysisText = response.choices[0].message.content || '';
-        console.log("Analysis text:", analysisText);
-        console.log("repsonse", response);
+        // If it's a character or pet, store the additional attributes
+        if (category === 'CHARACTER' || category === 'PET') {
+            // Create a copy of analysis and delete the fields we don't store in CharacterAttributes
+            const attributesToStore = { ...analysis };
+            delete attributesToStore.description;
+            delete attributesToStore.suggestedName;
 
-        // Check if this might be a recognized character
-        let recognizedElementId = null;
-        let suggestedName = null;
-
-        if (category === ElementCategory.CHARACTER) {
-            // Look for patterns that suggest recognition
-            for (const element of userElements) {
-                if (analysisText.toLowerCase().includes(element.name.toLowerCase())) {
-                    recognizedElementId = element.id;
-                    suggestedName = element.name;
-                    break;
+            await prisma.characterAttributes.upsert({
+                where: { elementId },
+                update: attributesToStore,
+                create: {
+                    elementId,
+                    ...attributesToStore
                 }
-            }
-
-            // If no explicit match, try to extract a name suggestion
-            if (!recognizedElementId) {
-                const nameMatch = analysisText.match(/This appears to be ([A-Za-z]+)|looks like ([A-Za-z]+)/i);
-                if (nameMatch && (nameMatch[1] || nameMatch[2])) {
-                    suggestedName = nameMatch[1] || nameMatch[2];
-                } else {
-                    // Default name based on category
-                    suggestedName = getCategoryDefaultName(category);
-                }
-            }
-        } else {
-            // For non-character categories, suggest a default name
-            suggestedName = getCategoryDefaultName(category);
-        }
-
-        // If we have an elementId, update the element with the description
-        if (elementId) {
-            try {
-                console.log(`Attempting to update element ${elementId} with description:`, analysisText);
-
-                const updatedElement = await prisma.myWorldElement.update({
-                    where: { id: elementId },
-                    data: {
-                        description: analysisText,
-                        name: suggestedName || getCategoryDefaultName(category)
-                    }
-                });
-
-                console.log(`Successfully updated element ${elementId}:`, updatedElement);
-            } catch (updateError) {
-                console.error('Failed to update element description:', updateError);
-                // Continue anyway to return the analysis
-            }
+            });
         }
 
         return NextResponse.json({
-            description: analysisText,
-            recognizedElementId,
-            suggestedName,
-            category,
-            elementId
+            success: true,
+            description: analysis.description,
+            suggestedName: analysis.suggestedName,
+            attributes: analysis
         });
 
-    } catch (error: any) {
-        console.error('Image analysis error:', error);
-        return NextResponse.json(
-            { error: error.message || 'Failed to analyze image' },
-            { status: 500 }
-        );
+    } catch (error) {
+        console.error('Error analyzing image:', error);
+        return NextResponse.json({ error: 'Failed to analyze image' }, { status: 500 });
     }
 }
 
