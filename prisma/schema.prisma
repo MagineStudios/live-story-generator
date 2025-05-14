@@ -122,6 +122,47 @@ model CharacterAttributes {
   updatedAt DateTime @updatedAt
 }
 
+// Add a new PetAttributes model
+model PetAttributes {
+  id          String         @id @default(cuid())
+  elementId   String         @unique
+  element     MyWorldElement @relation(fields: [elementId], references: [id], onDelete: Cascade)
+  age         String?
+  gender      String?
+  breed       String?
+  furColor    String?
+  furStyle    String?
+  markings    String?
+  eyeColor    String?
+  collar      String?
+  outfit      String?
+  accessories String?
+}
+
+// Add a new ObjectAttributes model
+model ObjectAttributes {
+  id             String         @id @default(cuid())
+  elementId      String         @unique
+  element        MyWorldElement @relation(fields: [elementId], references: [id], onDelete: Cascade)
+  material       String?
+  primaryColor   String?
+  secondaryColor String?
+  details        String?
+  accessories    String?
+}
+
+// Add a new LocationAttributes model
+model LocationAttributes {
+  id           String         @id @default(cuid())
+  elementId    String         @unique
+  element      MyWorldElement @relation(fields: [elementId], references: [id], onDelete: Cascade)
+  locationType String?
+  setting      String?
+  timeOfDay    String?
+  weather      String?
+  notable      String?
+}
+
 // New model for My World elements
 model MyWorldElement {
   id                  String               @id @default(cuid())
@@ -139,6 +180,9 @@ model MyWorldElement {
   updatedAt           DateTime             @updatedAt
   stories             StoryElement[]
   characterAttributes CharacterAttributes?
+  PetAttributes       PetAttributes?
+  ObjectAttributes    ObjectAttributes?
+  LocationAttributes  LocationAttributes?
 
   @@index([userId, category]) // Index for faster lookups
   @@index([tempId]) // index to find guest elements by session

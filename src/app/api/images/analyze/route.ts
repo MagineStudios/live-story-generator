@@ -19,9 +19,7 @@ const requestSchema = z.object({
 export async function POST(req: NextRequest) {
     try {
         const { userId } = await auth();
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        // We'll allow analyzing images even for guest users, as we need to analyze uploaded images
 
         const body = await req.json();
         const { imageUrl, category, elementId } = requestSchema.parse(body);
@@ -34,7 +32,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
         }
 
-        // Updated prompts with enhanced fields for each category
+        // Generate the appropriate prompt based on element category
         let prompt = '';
         if (category === 'CHARACTER') {
             prompt = `Analyze this image of a person and provide a detailed description.
@@ -98,8 +96,7 @@ export async function POST(req: NextRequest) {
       Extract the following attributes in valid JSON format:
       {
         "description": "Comprehensive description of what's in the image",
-        "suggestedName": "Suggested name or title for this image",
-        "category": "Suggested category (CHARACTER, PET, OBJECT, LOCATION)"
+        "suggestedName": "Suggested name or title for this image"
       }`;
         }
 
@@ -123,34 +120,121 @@ export async function POST(req: NextRequest) {
             ],
             response_format: { type: "json_object" }
         });
+
         // Parse the response
         const analysisText = response.choices[0]?.message?.content || '{}';
         const analysis = JSON.parse(analysisText);
 
-        // Update the element with the description
+        // Update the element with the description and name
         await prisma.myWorldElement.update({
             where: { id: elementId },
             data: {
-                name: analysis.suggestedName || `My ${category.toLowerCase()}`,
+                name: analysis.suggestedName || getCategoryDefaultName(category),
                 description: analysis.description || ''
             },
         });
 
-        // If it's a character, pet or object, store the additional attributes
-        if (category === 'CHARACTER' || category === 'PET' || category === 'OBJECT') {
-            // Create a copy of analysis and delete the fields we don't store in CharacterAttributes
-            const attributesToStore = { ...analysis };
-            delete attributesToStore.description;
-            delete attributesToStore.suggestedName;
+        // Save attributes based on the element category
+        switch (category) {
+            case 'CHARACTER':
+                await prisma.characterAttributes.upsert({
+                    where: { elementId },
+                    update: {
+                        age: analysis.age || null,
+                        gender: analysis.gender || null,
+                        skinColor: analysis.skinColor || null,
+                        hairColor: analysis.hairColor || null,
+                        hairStyle: analysis.hairStyle || null,
+                        eyeColor: analysis.eyeColor || null,
+                        ethnicity: analysis.ethnicity || null,
+                        outfit: analysis.outfit || null,
+                        accessories: analysis.accessories || null,
+                    },
+                    create: {
+                        elementId,
+                        age: analysis.age || null,
+                        gender: analysis.gender || null,
+                        skinColor: analysis.skinColor || null,
+                        hairColor: analysis.hairColor || null,
+                        hairStyle: analysis.hairStyle || null,
+                        eyeColor: analysis.eyeColor || null,
+                        ethnicity: analysis.ethnicity || null,
+                        outfit: analysis.outfit || null,
+                        accessories: analysis.accessories || null,
+                    },
+                });
+                break;
 
-            await prisma.characterAttributes.upsert({
-                where: { elementId },
-                update: attributesToStore,
-                create: {
-                    elementId,
-                    ...attributesToStore
-                }
-            });
+            case 'PET':
+                await prisma.petAttributes.upsert({
+                    where: { elementId },
+                    update: {
+                        age: analysis.age || null,
+                        gender: analysis.gender || null,
+                        breed: analysis.breed || null,
+                        furColor: analysis.furColor || null,
+                        furStyle: analysis.furStyle || null,
+                        markings: analysis.markings || null,
+                        eyeColor: analysis.eyeColor || null,
+                        collar: analysis.collar || null,
+                        accessories: analysis.accessories || null,
+                    },
+                    create: {
+                        elementId,
+                        age: analysis.age || null,
+                        gender: analysis.gender || null,
+                        breed: analysis.breed || null,
+                        furColor: analysis.furColor || null,
+                        furStyle: analysis.furStyle || null,
+                        markings: analysis.markings || null,
+                        eyeColor: analysis.eyeColor || null,
+                        collar: analysis.collar || null,
+                        accessories: analysis.accessories || null,
+                    },
+                });
+                break;
+
+            case 'OBJECT':
+                await prisma.objectAttributes.upsert({
+                    where: { elementId },
+                    update: {
+                        material: analysis.material || null,
+                        primaryColor: analysis.primaryColor || analysis.skinColor || null,
+                        secondaryColor: analysis.secondaryColor || analysis.hairColor || null,
+                        details: analysis.details || analysis.markings || null,
+                        accessories: analysis.accessories || null,
+                    },
+                    create: {
+                        elementId,
+                        material: analysis.material || null,
+                        primaryColor: analysis.primaryColor || analysis.skinColor || null,
+                        secondaryColor: analysis.secondaryColor || analysis.hairColor || null,
+                        details: analysis.details || analysis.markings || null,
+                        accessories: analysis.accessories || null,
+                    },
+                });
+                break;
+
+            case 'LOCATION':
+                await prisma.locationAttributes.upsert({
+                    where: { elementId },
+                    update: {
+                        locationType: analysis.locationType || null,
+                        setting: analysis.setting || null,
+                        timeOfDay: analysis.timeOfDay || null,
+                        weather: analysis.weather || null,
+                        notable: analysis.notable || null,
+                    },
+                    create: {
+                        elementId,
+                        locationType: analysis.locationType || null,
+                        setting: analysis.setting || null,
+                        timeOfDay: analysis.timeOfDay || null,
+                        weather: analysis.weather || null,
+                        notable: analysis.notable || null,
+                    },
+                });
+                break;
         }
 
         return NextResponse.json({
@@ -163,25 +247,6 @@ export async function POST(req: NextRequest) {
     } catch (error) {
         console.error('Error analyzing image:', error);
         return NextResponse.json({ error: 'Failed to analyze image' }, { status: 500 });
-    }
-}
-
-function getPromptForCategory(category: ElementCategory): string {
-    switch (category) {
-        case ElementCategory.CHARACTER:
-            return "Describe this character in under 50 words, focusing exclusively on precise visual details like: age, ethnicity, face, skin color, hair color, hair style, weight, eye color, clothing, and one distinctive feature. If the character has a name visible in the image, mention it.";
-
-        case ElementCategory.PET:
-            return "Describe this animal/pet in under 50 words, focusing exclusively on precise visual details like: species, breed, size, color, eye color, markings, fur/feathers, fur color, any collar or accessories, and one distinctive feature. If the pet has a name visible in the image, mention it.";
-
-        case ElementCategory.LOCATION:
-            return "Describe this location in under 50 words, focusing exclusively on precise visual details like: environment type, key structures, colors, lighting, atmosphere, and one distinctive feature. Format as a simple, factual description.";
-
-        case ElementCategory.OBJECT:
-            return "Describe this object in under 50 words, focusing exclusively on precise visual details like: what it is, size, shape, color, material, condition, and one distinctive feature. If the object has text or a brand name visible, mention it.";
-
-        default:
-            return "Provide a precise, objective visual description of what you see in under 50 words. Focus only on physical, visual details. Avoid speculation about non-visual characteristics. Format as a simple, factual description.";
     }
 }
 

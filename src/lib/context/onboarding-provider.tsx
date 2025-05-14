@@ -2,22 +2,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { ElementCategory } from '@prisma/client';
 import { useAuth } from '@clerk/nextjs';  // Clerk hook to detect logged-in user
-import type { OnboardingSession } from '@prisma/client';
+import type { OnboardingSession, MyWorldElement } from '@prisma/client';
 
-// Types for MyWorld elements and visual styles
-export type MyWorldElement = {
-    id: string;
-    name: string;
-    description: string;
-    imageUrl: string;
-    publicId?: string;
-    category: ElementCategory;
-    isDefault: boolean;
-    isDetectedInStory?: boolean;
-    userId?: string;
-    tempId?: string;
-    isSelected?: boolean;
-};
+
 type VisualStyle = { id: string; name: string; imageUrl: string };
 
 // Context state shape
@@ -267,77 +254,94 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     };
 
     // Upload a new image (character/pet/location/object) and analyze it via AI
-    const addUploadedImage = async (file: File, category: ElementCategory): Promise<MyWorldElement | undefined> => {
-        if (!file) return undefined;
+    const addUploadedImage = async (file: File, category: ElementCategory = 'CHARACTER') => {
+        setIsAnalyzingImage(true);
+
         try {
-            setIsAnalyzingImage(true);
-            // Prepare form data
+            // Create form data for the upload
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('category', category);
-            if (tempId) {
+            formData.append('category', category); // Pass the detected category
+
+            // Add tempId if the user is not logged in (guest mode)
+            if (!userId && tempId) {
                 formData.append('tempId', tempId);
             }
 
-            // 1. Upload image to Cloudinary and create a MyWorldElement (guest if no userId)
-            const uploadRes = await fetch('/api/images/upload', { method: 'POST', body: formData });
-            if (!uploadRes.ok) throw new Error('Image upload failed');
-            const { url, publicId, elementId } = await uploadRes.json();
-            console.log('Uploaded image. Element ID:', elementId);
-
-            // 2. Analyze image with AI (e.g., GPT Vision) to get description (and suggested name)
-            const analyzeRes = await fetch('/api/images/analyze', {
+            // Upload the file with the detected category
+            const response = await fetch('/api/images/upload', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ imageUrl: url, category, elementId })
+                body: formData
             });
-            if (!analyzeRes.ok) throw new Error('Image analysis failed');
-            const { description, suggestedName, recognizedElementId } = await analyzeRes.json();
-            console.log('Image analyzed. Description:', description, 'Suggested name:', suggestedName, 'Recognized ID:', recognizedElementId);
 
-            // If the uploaded image matches a known default character and was recognized (e.g., user uploaded an existing character),
-            // we will not create a duplicate. Instead, we can handle that separately (not common in onboarding, so skip for now).
-
-            // 3. Fetch the updated element from backend (with description filled in). For guest users, this may be unauthorized,
-            // so we'll handle via the fallback if fetch fails.
-            let newElement: MyWorldElement | null = null;
-            try {
-                const elementRes = await fetch(`/api/my-world/elements/${elementId}`);
-                if (elementRes.ok) {
-                    const data = await elementRes.json();
-                    newElement = data.element || data;
-                }
-            } catch (err) {
-                console.warn('Unable to fetch element details (likely guest mode). Using local data.');
+            if (!response.ok) {
+                throw new Error('Failed to upload image');
             }
-            if (!newElement) {
-                // Construct element object manually as fallback
-                newElement = {
-                    id: elementId,
-                    name: suggestedName || `My ${category.toLowerCase()}`,
-                    description: description || '',
-                    imageUrl: url,
-                    publicId: publicId,
+
+            const data = await response.json();
+
+            // Create an element object from the upload response that matches your actual MyWorldElement interface
+            const newElement: MyWorldElement = {
+                id: data.elementId,
+                name: data.name || `My ${category.toLowerCase()}`,
+                description: '',
+                imageUrl: data.url,
+                // Remove thumbnailUrl if it's not in your interface
+                // thumbnailUrl: data.url || data.thumbnailUrl,
+                category: category,
+                publicId: data.public_id,
+                isDetectedInStory: false,
+                isDefault: false,
+                userId: userId || null, // Use undefined instead of null
+                tempId: userId ? null: tempId || null,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            };
+
+            // Add any other required properties that might be in your MyWorldElement interface
+
+            // Add the new element to the state
+            setUploadedElements(prev => [...prev, newElement]);
+
+            // Analyze the image to get detailed attributes
+            const analysisResponse = await fetch('/api/images/analyze', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    imageUrl: data.url,
                     category: category,
-                    isDefault: false,
-                    userId: userId || undefined,
-                    tempId: userId ? undefined : tempId || undefined,
+                    elementId: data.elementId,
+                }),
+            });
+
+            if (analysisResponse.ok) {
+                const analysisData = await analysisResponse.json();
+
+                // Update element with analysis data
+                const updatedElement: MyWorldElement = {
+                    ...newElement,
+                    name: analysisData.suggestedName || newElement.name,
+                    description: analysisData.description || '',
                 };
+
+                // Update the element in state
+                setUploadedElements(prev =>
+                    prev.map(el => el.id === newElement.id ? updatedElement : el)
+                );
+
+                return updatedElement;
             }
-            // Add to state: mark as selected and add to library
-            newElement.isSelected = true;
-            addElement(newElement);
-            setUploadedElements(prev => [...prev, newElement as MyWorldElement]);
+
             return newElement;
         } catch (error) {
-            console.error('Upload and analysis error:', error);
-            // (Optionally) display an error toast to the user
-            return undefined;
+            console.error('Error uploading file:', error);
+            throw error;
         } finally {
             setIsAnalyzingImage(false);
         }
     };
-
     // Generate theme suggestions for the story prompt based on selected elements and style
     const generateThemeSuggestions = async () => {
         if (!visualStyle) return;
