@@ -12,6 +12,7 @@ interface OnboardingState {
     // Onboarding answers
     storyGoal: string[];
     tone: string[];
+    tempId: string;
     selectedElements: MyWorldElement[];
     uploadedElements: MyWorldElement[];  // all uploaded elements (selected or not)
     visualStyle?: VisualStyle;
@@ -303,6 +304,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             // Add the new element to the state
             setUploadedElements(prev => [...prev, newElement]);
 
+
             // Analyze the image to get detailed attributes
             const analysisResponse = await fetch('/api/images/analyze', {
                 method: 'POST',
@@ -409,6 +411,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     const value: OnboardingState = {
         storyGoal,
         tone,
+        tempId,
         selectedElements,
         uploadedElements,
         visualStyle,

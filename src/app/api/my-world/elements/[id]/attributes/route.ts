@@ -1,110 +1,160 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { auth } from '@clerk/nextjs/server';
+import { prisma } from '@/lib/prisma';
 
-// GET endpoint to fetch attributes for an element
+// This handles GET requests to /api/my-world/elements/[id]/attributes
 export async function GET(
     req: NextRequest,
     context: { params: { id: string } }
 ) {
     try {
         const { id } = await context.params;
+        const { userId } = await auth();
+        // For attributes, we'll allow guest users to fetch their own elements
+
+        // Get the element ID from the URL parameters
         const elementId = id;
 
-        const attributes = await prisma.characterAttributes.findUnique({
-            where: { elementId }
-        });
-
-        if (!attributes) {
-            return NextResponse.json(
-                { message: "No attributes found for this element" },
-                { status: 404 }
-            );
+        if (!elementId) {
+            return NextResponse.json({ error: 'Element ID is required' }, { status: 400 });
         }
 
-        return NextResponse.json({ attributes });
+        // First, get the element to determine its category
+        const element = await prisma.myWorldElement.findUnique({
+            where: { id: elementId },
+            select: {
+                category: true,
+                userId: true,
+                tempId: true
+            }
+        });
+
+        if (!element) {
+            return NextResponse.json({ error: 'Element not found' }, { status: 404 });
+        }
+
+        // Security check - only allow access to elements owned by the user
+        if (userId && element.userId !== userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Now get the attributes based on the element category
+        let attributes;
+        switch (element.category) {
+            case 'CHARACTER':
+                attributes = await prisma.characterAttributes.findUnique({
+                    where: { elementId }
+                });
+                break;
+            case 'PET':
+                attributes = await prisma.petAttributes.findUnique({
+                    where: { elementId }
+                });
+                break;
+            case 'OBJECT':
+                attributes = await prisma.objectAttributes.findUnique({
+                    where: { elementId }
+                });
+                break;
+            case 'LOCATION':
+                attributes = await prisma.locationAttributes.findUnique({
+                    where: { elementId }
+                });
+                break;
+            default:
+                attributes = null;
+        }
+
+        // If no attributes found, return an object with just elementId
+        if (!attributes) {
+            attributes = { elementId };
+        }
+
+        return NextResponse.json({ attributes, category: element.category });
+
     } catch (error) {
-        console.error('Error fetching attributes:', error);
-        return NextResponse.json(
-            { error: 'Failed to fetch attributes' },
-            { status: 500 }
-        );
+        console.error('Error fetching element attributes:', error);
+        return NextResponse.json({ error: 'Failed to fetch element attributes' }, { status: 500 });
     }
 }
 
-// PUT endpoint to update attributes for an element
+// This handles PUT requests to update attributes
 export async function PUT(
     req: NextRequest,
     context: { params: { id: string } }
 ) {
     try {
+        const { userId } = await auth();
+
+        // Get the element ID from the URL parameters
         const { id } = await context.params;
         const elementId = id;
 
-        const { userId } = await auth();
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!elementId) {
+            return NextResponse.json({ error: 'Element ID is required' }, { status: 400 });
         }
 
-        const data = await req.json();
-
-        // Check if the element exists and belongs to the user
-        const element = await prisma.myWorldElement.findFirst({
-            where: {
-                id: elementId,
-                userId,
-            },
+        // First, get the element to determine its category
+        const element = await prisma.myWorldElement.findUnique({
+            where: { id: elementId },
+            select: {
+                category: true,
+                userId: true,
+                tempId: true
+            }
         });
 
         if (!element) {
-            return NextResponse.json(
-                { error: 'Element not found or you do not have permission' },
-                { status: 404 }
-            );
+            return NextResponse.json({ error: 'Element not found' }, { status: 404 });
         }
 
-        // Create or update the attributes
-        const attributes = await prisma.characterAttributes.upsert({
-            where: { elementId },
-            update: {
-                age: data.age || null,
-                gender: data.gender || null,
-                skinColor: data.skinColor || null,
-                hairColor: data.hairColor || null,
-                hairStyle: data.hairStyle || null,
-                eyeColor: data.eyeColor || null,
-                ethnicity: data.ethnicity || null,
-                furColor: data.furColor || null,
-                furStyle: data.furStyle || null,
-                markings: data.markings || null,
-                breed: data.breed || null,
-                outfit: data.outfit || null,
-                accessories: data.accessories || null,
-            },
-            create: {
-                elementId,
-                age: data.age || null,
-                gender: data.gender || null,
-                skinColor: data.skinColor || null,
-                hairColor: data.hairColor || null,
-                hairStyle: data.hairStyle || null,
-                eyeColor: data.eyeColor || null,
-                ethnicity: data.ethnicity || null,
-                furColor: data.furColor || null,
-                furStyle: data.furStyle || null,
-                markings: data.markings || null,
-                breed: data.breed || null,
-                outfit: data.outfit || null,
-                accessories: data.accessories || null,
-            },
-        });
+        // Security check - only allow access to elements owned by the user
+        if (userId && element.userId !== userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
 
-        return NextResponse.json({ attributes });
+        // Parse the request body to get the attributes
+        const attributes = await req.json();
+
+        // Now update the attributes based on the element category
+        let result;
+        switch (element.category) {
+            case 'CHARACTER':
+                result = await prisma.characterAttributes.upsert({
+                    where: { elementId },
+                    update: attributes,
+                    create: { elementId, ...attributes }
+                });
+                break;
+            case 'PET':
+                result = await prisma.petAttributes.upsert({
+                    where: { elementId },
+                    update: attributes,
+                    create: { elementId, ...attributes }
+                });
+                break;
+            case 'OBJECT':
+                result = await prisma.objectAttributes.upsert({
+                    where: { elementId },
+                    update: attributes,
+                    create: { elementId, ...attributes }
+                });
+                break;
+            case 'LOCATION':
+                result = await prisma.locationAttributes.upsert({
+                    where: { elementId },
+                    update: attributes,
+                    create: { elementId, ...attributes }
+                });
+                break;
+            default:
+                return NextResponse.json({ error: 'Unsupported element category' }, { status: 400 });
+        }
+
+        return NextResponse.json({ success: true, attributes: result });
+
     } catch (error) {
-        console.error('Error updating attributes:', error);
-        return NextResponse.json(
-            { error: 'Failed to update attributes' },
-            { status: 500 }
-        );
+        console.error('Error updating element attributes:', error);
+        return NextResponse.json({ error: 'Failed to update element attributes' }, { status: 500 });
     }
 }

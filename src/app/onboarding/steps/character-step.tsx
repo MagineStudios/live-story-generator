@@ -48,6 +48,7 @@ export function CharactersStep() {
     const isFirstEntryRef = useRef(true);
     const animationRef = useRef<NodeJS.Timeout | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [showAnalyzingUI, setShowAnalyzingUI] = useState(false);
 
     // Selected character tracking (max 3)
     const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
@@ -125,6 +126,15 @@ export function CharactersStep() {
                         addElement(character);
                     });
                     animateText("Welcome back! Your cast of characters is ready for a new adventure!");
+
+                    // Set first character as primary if none is set
+                    if (existingCharacters.length > 0 && !primaryCharacterId) {
+                        setPrimaryCharacterId(existingCharacters[0].id);
+                    }
+
+                    // Initialize selected characters
+                    const initialSelected = existingCharacters.slice(0, MAX_CHARACTERS).map(c => c.id);
+                    setSelectedCharacters(initialSelected);
                 } else if (userId) {
                     // Only fetch from API if user is logged in and we don't have characters
                     const response = await fetch('/api/my-world/elements?categories=CHARACTER,PET,OBJECT');
@@ -136,6 +146,15 @@ export function CharactersStep() {
                             elements.forEach((element: any) => {
                                 addElement(element);
                             });
+
+                            // Set first character as primary if none is set
+                            if (elements.length > 0 && !primaryCharacterId) {
+                                setPrimaryCharacterId(elements[0].id);
+                            }
+
+                            // Initialize selected characters
+                            const initialSelected = elements.slice(0, MAX_CHARACTERS).map((e: any) => e.id);
+                            setSelectedCharacters(initialSelected);
 
                             animateText("Welcome back! Who should star in today's story?");
                         } else {
@@ -161,14 +180,51 @@ export function CharactersStep() {
             loadMyWorldElements();
             isFirstEntryRef.current = false;
         }
-    }, [addElement, uploadedElements, userId]);
+    }, [addElement, uploadedElements, userId, primaryCharacterId]);
 
-    // Update text when analyzing image
+    // Update text and UI when analyzing image
     useEffect(() => {
         if (isAnalyzingImage) {
             animateText(uploadingText);
+            setShowAnalyzingUI(true);
+        } else {
+            setShowAnalyzingUI(false);
         }
     }, [isAnalyzingImage]);
+
+    // Update text when max characters are selected
+    useEffect(() => {
+        if (selectedCharacters.length === MAX_CHARACTERS) {
+            animateText(maxCharactersText);
+        }
+    }, [selectedCharacters]);
+
+    // Toggle character selection
+    const toggleCharacterSelection = (characterId: string) => {
+        if (selectedCharacters.includes(characterId)) {
+            // If this is the primary character, don't allow deselection
+            if (characterId === primaryCharacterId) {
+                toast.error("Can't Remove Primary", {
+                    description: "You need to set another character as primary first."
+                });
+                return;
+            }
+
+            // Otherwise remove from selection
+            setSelectedCharacters(selectedCharacters.filter(id => id !== characterId));
+        } else {
+            // Check if we've reached the max before adding
+            if (selectedCharacters.length >= MAX_CHARACTERS) {
+                toast.error("Maximum Characters", {
+                    description: `You can only select up to ${MAX_CHARACTERS} characters.`
+                });
+                return;
+            }
+
+            // Add to selection
+            setSelectedCharacters([...selectedCharacters, characterId]);
+        }
+    };
 
     // Set primary character
     const setPrimaryCharacter = (characterId: string) => {
@@ -207,9 +263,11 @@ export function CharactersStep() {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        try {
-            animateText(categoryDetectionText);
+        // Immediately show analyzing UI and text
+        setShowAnalyzingUI(true);
+        animateText(uploadingText);
 
+        try {
             // First detect the category using Vision API
             const categoryFormData = new FormData();
             categoryFormData.append('file', file);
@@ -247,6 +305,7 @@ export function CharactersStep() {
 
             if (newElement) {
                 setLastUploadedElement(newElement);
+                setShowAnalyzingUI(false);
 
                 // Set as primary character if it's the first one
                 if (!primaryCharacterId) {
@@ -276,6 +335,7 @@ export function CharactersStep() {
                 description: "There was an error uploading your image."
             });
             animateText("Oops! Something went wrong with the upload. Please try again.");
+            setShowAnalyzingUI(false);
         }
 
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -369,11 +429,13 @@ export function CharactersStep() {
     };
 
     // Filter characters, pets, and objects for display
-    const characterCount = selectedElements.filter(el =>
+    const charactersForDisplay = selectedElements.filter(el =>
         el.category === 'CHARACTER' ||
         el.category === 'PET' ||
         el.category === 'OBJECT'
-    ).length;
+    );
+
+    const characterCount = charactersForDisplay.length;
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -438,7 +500,7 @@ export function CharactersStep() {
             <div className="mb-6">
                 <SpeechBubble
                     message={displayedText}
-                    animateIn={false}
+                    animateIn={true}
                     heightClass="min-h-[60px]"
                     position="left"
                     // textClassName="text-sm" // Make text smaller to fit more content
@@ -447,6 +509,7 @@ export function CharactersStep() {
 
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-semibold">Characters</h2>
+
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
@@ -470,8 +533,25 @@ export function CharactersStep() {
                 animate="visible"
                 className="mb-8"
             >
-                {/* Show upload area when no characters or actively uploading */}
-                {(characterCount === 0 || isAnalyzingImage) && (
+                {/* Show analyzing UI when processing an image */}
+                {showAnalyzingUI && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="mb-6"
+                    >
+                        <div className="p-6 border border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center">
+                            <div className="w-16 h-16 rounded-full bg-[#4CAF50]/5 flex items-center justify-center mb-4">
+                                <div className="w-8 h-8 border-2 border-[#4CAF50] border-t-transparent rounded-full animate-spin" />
+                            </div>
+                            <h3 className="text-lg font-medium text-gray-700">Analyzing Image...</h3>
+                            <p className="text-gray-500 mt-2">Please wait while we process your image</p>
+                        </div>
+                    </motion.div>
+                )}
+
+                {/* Show upload area when no characters and not analyzing */}
+                {(characterCount === 0 && !showAnalyzingUI) && (
                     <motion.div variants={itemVariants} className="mb-4">
                         <button
                             type="button"
@@ -512,13 +592,12 @@ export function CharactersStep() {
 
                 {/* Display characters with selection capability */}
                 <AnimatePresence>
-                    {selectedElements
-                        .filter(el =>
-                            el.category === 'CHARACTER' ||
-                            el.category === 'PET' ||
-                            el.category === 'OBJECT'
-                        )
-                        .map((character) => (
+                    {charactersForDisplay.map((character) => {
+                        const isSelected = selectedCharacters.includes(character.id);
+                        const isPrimary = character.id === primaryCharacterId;
+                        const isSelectable = isSelected || selectedCharacters.length < MAX_CHARACTERS;
+
+                        return (
                             <motion.div
                                 key={character.id}
                                 variants={itemVariants}
@@ -528,15 +607,28 @@ export function CharactersStep() {
                                 transition={{ duration: 0.3 }}
                                 className="mb-3"
                             >
-                                <div className="flex items-center p-3 bg-white rounded-xl border border-gray-200 shadow-sm hover:border-[#4CAF50] transition-colors">
-                                    {/* Primary character crown */}
-                                    {character.id === primaryCharacterId && (
+                                <div
+                                    onClick={() => {
+                                        if (isSelectable || isSelected) {
+                                            toggleCharacterSelection(character.id);
+                                        }
+                                    }}
+                                    className={`relative flex items-center p-3 bg-white rounded-xl border ${
+                                        isSelected
+                                            ? 'border-[#4CAF50] shadow-md'
+                                            : 'border-gray-200 shadow-sm'
+                                    } ${
+                                        isSelectable ? 'hover:border-[#4CAF50] cursor-pointer' : 'opacity-70 cursor-not-allowed'
+                                    } transition-all`}
+                                >
+                                    {/* Primary character crown - now in top left */}
+                                    {isPrimary && (
                                         <div className="absolute -top-2 -left-2 w-6 h-6 bg-amber-400 rounded-full flex items-center justify-center shadow-sm">
-                                            <Crown className="w-3 h-3 text-white" />
+                                            <Crown className="w-3.5 h-3.5 text-white" />
                                         </div>
                                     )}
 
-                                    <div className="w-14 h-14 rounded-md overflow-hidden mr-3 flex-shrink-0">
+                                    <div className="relative w-14 h-14 rounded-md overflow-hidden mr-3 flex-shrink-0">
                                         {character.imageUrl ? (
                                             <img
                                                 src={character.imageUrl}
@@ -548,6 +640,10 @@ export function CharactersStep() {
                                                 {getCharacterIcon(character)}
                                             </div>
                                         )}
+
+                                        {isSelected && (
+                                            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-[#4CAF50]"></div>
+                                        )}
                                     </div>
 
                                     <div className="flex-1">
@@ -555,16 +651,6 @@ export function CharactersStep() {
                                             <h4 className="font-medium text-gray-800">
                                                 {character.name}
                                             </h4>
-                                            {character.id !== primaryCharacterId && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPrimaryCharacter(character.id)}
-                                                    className="ml-2 p-1 text-amber-400 hover:text-amber-500 transition-colors"
-                                                    title="Set as primary character"
-                                                >
-                                                    <Crown className="w-3.5 h-3.5" />
-                                                </button>
-                                            )}
                                         </div>
                                         <p className="text-sm text-gray-500 line-clamp-1">
                                             {character.category === 'PET' && <span className="mr-1">🐾</span>}
@@ -573,20 +659,51 @@ export function CharactersStep() {
                                         </p>
                                     </div>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => handleEditAttributes(character.id)}
-                                        className="ml-2 p-2 text-gray-500 hover:text-[#4CAF50] hover:bg-[#4CAF50]/10 rounded-full transition-colors cursor-pointer"
-                                    >
-                                        <Pencil className="w-5 h-5" />
-                                    </button>
+                                    {/* Character action buttons */}
+                                    <div className="flex items-center space-x-1">
+                                        {/* Crown button - shows if character is not primary */}
+                                        {!isPrimary && (
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setPrimaryCharacter(character.id);
+                                                            }}
+                                                            className="p-2 rounded-full text-gray-400 hover:text-amber-400 hover:bg-amber-50 transition-colors"
+                                                        >
+                                                            <Crown className="w-5 h-5" />
+                                                        </button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>Set as primary character</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        )}
+
+                                        {/* Edit button */}
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleEditAttributes(character.id);
+                                            }}
+                                            className="p-2 text-gray-500 hover:text-[#4CAF50] hover:bg-[#4CAF50]/10 rounded-full transition-colors"
+                                        >
+                                            <Pencil className="w-5 h-5" />
+                                        </button>
+                                    </div>
                                 </div>
                             </motion.div>
-                        ))}
+                        );
+                    })}
                 </AnimatePresence>
 
                 {/* "Add another character" button */}
-                {characterCount > 0 && !isAnalyzingImage && (
+                {characterCount > 0 && !showAnalyzingUI && characterCount < MAX_CHARACTERS && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -597,13 +714,25 @@ export function CharactersStep() {
                             type="button"
                             onClick={triggerFileSelect}
                             disabled={isAnalyzingImage || isLoading}
-                            className="flex items-center justify-center w-full p-3 rounded-lg border border-gray-200 text-gray-600 hover:text-[#4CAF50] hover:border-[#4CAF50]/50 hover:bg-[#4CAF50]/5 transition-colors cursor-pointer"
+                            className="flex items-center justify-center w-full p-3 rounded-lg border border-gray-200 text-gray-600 hover:text-[#4CAF50] hover:border-[#4CAF50]/50 hover:bg-[#4CAF50]/5 transition-colors"
                         >
                             <Plus className="w-5 h-5 mr-2" />
                             <span>Add another character</span>
                         </button>
                     </motion.div>
                 )}
+
+                {/* Character count indicator */}
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                    className="mt-4 text-center text-sm text-gray-500"
+                >
+                    <span className={selectedCharacters.length === MAX_CHARACTERS ? 'text-[#4CAF50] font-medium' : ''}>
+                        {selectedCharacters.length} / {MAX_CHARACTERS} Characters Selected
+                    </span>
+                </motion.div>
             </motion.div>
 
             {/* Continue button */}
@@ -614,15 +743,19 @@ export function CharactersStep() {
             >
                 <Button
                     onClick={goToNextStep}
-                    disabled={isAnalyzingImage || isLoading}
-                    className="w-full py-6 text-lg font-medium rounded-full bg-[#4CAF50] hover:bg-[#43a047] text-white cursor-pointer shadow-md hover:shadow-lg transition-all duration-300"
+                    disabled={!canProceed || isAnalyzingImage || isLoading}
+                    className={`w-full py-6 text-lg font-medium rounded-full ${
+                        canProceed
+                            ? 'bg-[#4CAF50] hover:bg-[#43a047] text-white cursor-pointer shadow-md hover:shadow-lg'
+                            : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    } transition-all duration-300`}
                 >
-                    {characterCount > 0 ? (
+                    {canProceed ? (
                         <>
                             <CheckCircle className="w-5 h-5 mr-2" />
                             Continue
                         </>
-                    ) : 'Skip for now'}
+                    ) : 'Select at least one character'}
                 </Button>
             </motion.div>
 

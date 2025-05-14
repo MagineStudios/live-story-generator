@@ -99,11 +99,40 @@ export function AttributesEditor({
     // Initialize attributes from props
     useEffect(() => {
         if (initialAttributes) {
-            setAttributes({ ...attributes, ...initialAttributes });
+            // Make sure we're keeping all the attributes that match the current category
+            let defaultAttributes = { elementId };
+
+            // Add category-specific default values
+            if (isCharacter) {
+                defaultAttributes = {
+                    ...defaultAttributes,
+                    skinColor: '#E3B98A',
+                    hairColor: '#6E3E19',
+                    eyeColor: '#5F4B32',
+                };
+            } else if (isPet) {
+                defaultAttributes = {
+                    ...defaultAttributes,
+                    furColor: '#A52A2A',
+                    eyeColor: '#5F4B32',
+                };
+            } else if (isObject) {
+                defaultAttributes = {
+                    ...defaultAttributes,
+                    primaryColor: '#FF5252',
+                    secondaryColor: '#448AFF',
+                };
+            }
+
+            // Set attributes with defaults and then override with actual values
+            setAttributes({
+                ...defaultAttributes,
+                ...initialAttributes
+            });
         }
         setName(elementName);
         setPendingNameUpdate(false);
-    }, [initialAttributes, elementName, isOpen]);
+    }, [initialAttributes, elementName, isOpen, category, elementId]);
 
     // Handle name update - immediately save to backend
     const handleNameUpdate = async (newName: string) => {
