@@ -441,7 +441,7 @@ async function generateStoryImages(storyId: string, pages: { storyText: string; 
 
                 // Use fetch with the server's full URL to call our edit API endpoint
                 const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-                const editResponse = await fetch(`${baseUrl}/api/images/edit`, {
+                const editResponse = await fetch(`/api/images/edit`, {
                     method: 'POST',
                     body: formData,
                 });

@@ -225,39 +225,39 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }, [storyGoal, tone, selectedElements, uploadedElements, visualStyle, themePrompt, themeSuggestions, currentStep, userId]);
 
     // Context action: set story goal
-    const setStoryGoal = (goals: string[]) => {
+    const setStoryGoal = useCallback((goals: string[]) => {
         if (JSON.stringify(goals) === JSON.stringify(storyGoal)) return; // Skip if unchanged
         _setStoryGoal(goals);
         saveOnboardingPrefs({ storyGoal: goals });
-    };
+    }, [storyGoal, saveOnboardingPrefs]);
 
-    const setTone = (tones: string[]) => {
+    const setTone = useCallback((tones: string[]) => {
         if (JSON.stringify(tones) === JSON.stringify(tone)) return; // Skip if unchanged
         _setTone(tones);
         saveOnboardingPrefs({ tone: tones });
-    };
+    }, [tone, saveOnboardingPrefs]);
 
     // Add a MyWorld element to the selected list
-    const addElement = (element: MyWorldElement) => {
+    const addElement = useCallback((element: MyWorldElement) => {
         setSelectedElements(curr => {
             // Avoid duplicates
             if (curr.find(el => el.id === element.id)) return curr;
             return [...curr, element];
         });
-    };
+    }, []);
 
     // Remove an element from selection
-    const removeElement = (id: string) => {
+    const removeElement = useCallback((id: string) => {
         setSelectedElements(curr => curr.filter(el => el.id !== id));
-    };
+    }, []);
 
     // Clear all selected elements
-    const clearAllElements = () => {
+    const clearAllElements = useCallback(() => {
         setSelectedElements([]);
-    };
+    }, []);
 
     // Update element name in selected (e.g., after editing)
-    const updateElementName = (id: string, name: string) => {
+    const updateElementName = useCallback((id: string, name: string) => {
         setSelectedElements(curr =>
             curr.map(el => (el.id === id ? { ...el, name } : el))
         );
@@ -265,10 +265,10 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         setUploadedElements(curr =>
             curr.map(el => (el.id === id ? { ...el, name } : el))
         );
-    };
+    }, []);
 
     // Update element description in selected list
-    const updateElementDescription = (id: string, description: string) => {
+    const updateElementDescription = useCallback((id: string, description: string) => {
         setSelectedElements(curr =>
             curr.map(el => (el.id === id ? { ...el, description } : el))
         );
@@ -276,10 +276,10 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         setUploadedElements(curr =>
             curr.map(el => (el.id === id ? { ...el, description } : el))
         );
-    };
+    }, []);
 
     // Set visual style (selected art style for the story)
-    const setVisualStyle = (style: VisualStyle) => {
+    const setVisualStyle = useCallback((style: VisualStyle) => {
         _setVisualStyle(style);
         // Clear any existing theme suggestions when style changes
         setThemeSuggestions([]);
@@ -289,15 +289,15 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         if (userId) {
             saveOnboardingPrefs({ visualStyleId: style.id });
         }
-    };
+    }, [userId, saveOnboardingPrefs]);
 
     // Set custom story prompt text
-    const setThemePrompt = (prompt: string) => {
+    const setThemePrompt = useCallback((prompt: string) => {
         _setThemePrompt(prompt);
-    };
+    }, []);
 
     // Navigation: go to the next step
-    const goToNextStep = () => {
+    const goToNextStep = useCallback(() => {
         _setCurrentStep(curr => {
             const next = Math.min(curr + 1, MAX_STEPS - 1);
             if (next !== curr) {
@@ -305,9 +305,9 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             }
             return next;
         });
-    };
+    }, [saveOnboardingPrefs]);
 
-    const goToPrevStep = () => {
+    const goToPrevStep = useCallback(() => {
         _setCurrentStep(curr => {
             const prev = Math.max(curr - 1, 0);
             if (prev !== curr) {
@@ -315,7 +315,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             }
             return prev;
         });
-    };
+    }, [saveOnboardingPrefs]);
 
     // Upload a new image (character/pet/location/object) and analyze it via AI
     const addUploadedImage = async (file: File, category: ElementCategory = 'CHARACTER') => {
@@ -407,7 +407,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     };
 
     // Generate theme suggestions for the story prompt based on selected elements and style
-    const generateThemeSuggestions = async () => {
+    const generateThemeSuggestions = useCallback(async () => {
         if (!visualStyle) return;
 
         try {
@@ -441,10 +441,10 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         } finally {
             setIsLoadingSuggestions(false);
         }
-    };
+    }, [visualStyle, selectedElements, tone]);
 
     // Create/generate the story based on current selections
-    const createStory = async (): Promise<{ id: string; status: string } | undefined> => {
+    const createStory = useCallback(async (): Promise<{ id: string; status: string } | undefined> => {
         setIsGenerating(true);
         setGenerationError(null);
         setGenerationProgress(0);
@@ -508,7 +508,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             // Note: We don't set isGeneratingStory to false here because
             // we still need to track the story generation progress via polling
         }
-    };
+    }, [visualStyle, themePrompt, tone]);
 
     // Update progress when story is being generated
     useEffect(() => {
