@@ -189,16 +189,17 @@ model MyWorldElement {
 }
 
 model OnboardingSession {
-  id          String   @id @default(cuid())
-  tempId      String?  @unique // unique guest session ID (null after migration)
-  user        User?    @relation("UserOnboardingSessions", fields: [userId], references: [id], onDelete: SetNull)
-  userId      String?
-  storyGoal   String[] @default([])
-  tone        String[] @default([])
-  story       Story?   @relation("StoryOnboardingSessions", fields: [storyId], references: [id], onDelete: SetNull)
-  storyId     String?
-  createdAt   DateTime @default(now())
-  currentStep Int      @default(0)
+  id            String   @id @default(cuid())
+  tempId        String?  @unique // unique guest session ID (null after migration)
+  user          User?    @relation("UserOnboardingSessions", fields: [userId], references: [id], onDelete: SetNull)
+  userId        String?
+  storyGoal     String[] @default([])
+  tone          String[] @default([])
+  story         Story?   @relation("StoryOnboardingSessions", fields: [storyId], references: [id], onDelete: SetNull)
+  storyId       String?
+  visualStyleId String? // Reference to the selected style
+  createdAt     DateTime @default(now())
+  currentStep   Int      @default(0)
 
   @@unique([userId])
 }
@@ -285,11 +286,15 @@ model MusicLibrary {
 
 // New model for visual styles
 model VisualStyle {
-  id        String   @id @default(cuid())
-  name      String
-  imageUrl  String // Thumbnail preview
-  isDefault Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  name           String
+  imageUrl       String // Thumbnail preview
+  color          String? // Hex color code for UI
+  textColor      String? // Text color for UI
+  description    String?  @db.Text
+  promptTemplate String?  @db.Text // The style-specific prompt template
+  isDefault      Boolean  @default(true)
+  createdAt      DateTime @default(now())
 }
 
 // ---------- Credits ----------

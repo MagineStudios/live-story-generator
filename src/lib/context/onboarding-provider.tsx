@@ -1,15 +1,23 @@
 'use client';
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ElementCategory } from '@prisma/client';
+import React, { createContext, useContext, useCallback, useEffect, useState } from 'react';
+import { ElementCategory, StoryStatus } from '@prisma/client';
 import { useAuth } from '@clerk/nextjs';  // Clerk hook to detect logged-in user
 import type { OnboardingSession, MyWorldElement } from '@prisma/client';
+import { toast } from 'sonner'; // Import toast from sonner
 
-
-type VisualStyle = { id: string; name: string; imageUrl: string };
+type VisualStyle = {
+    id: string;
+    name: string;
+    imageUrl: string;
+    // UI-only properties (not saved to database)
+    color?: string;
+    textColor?: string;
+    description?: string;
+};
 
 // Context state shape
 interface OnboardingState {
-    // Onboarding answers0
+    // Onboarding answers
     storyGoal: string[];
     tone: string[];
     tempId: string | null;
@@ -23,8 +31,13 @@ interface OnboardingState {
     isLoadingSuggestions: boolean;
     isAnalyzingImage: boolean;
     isGeneratingStory: boolean;
-    generatedStoryId?: string;
+    generatedStoryId: string | undefined;
+    // Generation status tracking
+    isGenerating: boolean;
+    generationProgress: number;
+    generationError: string | null;
     // Actions
+    setGeneratedStoryId: (id: string | undefined) => void;
     setStoryGoal: (goals: string[]) => void;
     setTone: (tones: string[]) => void;
     addElement: (el: MyWorldElement) => void;
@@ -36,10 +49,27 @@ interface OnboardingState {
     setVisualStyle: (style: VisualStyle) => void;
     setThemePrompt: (prompt: string) => void;
     generateThemeSuggestions: () => Promise<void>;
-    createStory: () => Promise<string | undefined>;
+    createStory: () => Promise<{ id: string; status: string } | undefined>;
     goToNextStep: () => void;
     goToPrevStep: () => void;
+    // Error handling
+    setGenerationError: (error: string | null) => void;
 }
+
+
+const debounce = <F extends (...args: any[]) => any>(
+    func: F,
+    wait: number
+): ((...args: Parameters<F>) => void) => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+
+    return function(...args: Parameters<F>) {
+        if (timeout !== null) {
+            clearTimeout(timeout);
+        }
+        timeout = setTimeout(() => func(...args), wait);
+    };
+};
 
 // Create context
 const OnboardingContext = createContext<OnboardingState | undefined>(undefined);
@@ -75,8 +105,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         }
     }, [userId]);
 
-
-    // after your tempId effect, add:
+    // Load onboarding data for logged in users
     useEffect(() => {
         if (!userId) return;
         (async () => {
@@ -102,22 +131,36 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     const [themePrompt, _setThemePrompt] = useState<string>('');
     const [themeSuggestions, setThemeSuggestions] = useState<Array<{ title: string; text: string; imageUrl?: string }>>([]);
     const [currentStep, _setCurrentStep] = useState<number>(0);
+
     // Loading flags
     const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
     const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
     const [isGeneratingStory, setIsGeneratingStory] = useState(false);
     const [generatedStoryId, setGeneratedStoryId] = useState<string | undefined>();
 
-    // Persist onboarding preferences for signed-in users
-    function saveOnboardingPrefs(prefs: Partial<OnboardingSession>) {
-      if (!userId) return;
-      fetch('/api/onboarding/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(prefs),
-      }).catch(console.error);
-    }
+    // Story generation tracking
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generationProgress, setGenerationProgress] = useState(0);
+    const [generationError, setGenerationError] = useState<string | null>(null);
 
+    // Persist onboarding preferences for signed-in users
+    const debouncedSave = useCallback(
+        debounce((prefs: Partial<OnboardingSession>) => {
+            if (!userId) return;
+
+            fetch('/api/onboarding/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(prefs),
+            }).catch(console.error);
+        }, 1000), // 1 second debounce
+        [userId]
+    );
+
+    function saveOnboardingPrefs(prefs: Partial<OnboardingSession>) {
+        if (!userId) return;
+        debouncedSave(prefs);
+    }
     // Hydrate state from localStorage on initial render (for returning guest)
     useEffect(() => {
         if (userId) return;
@@ -154,31 +197,42 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     // Persist state to localStorage whenever it changes (for guest persistence)
     useEffect(() => {
         if (!userId) {
-            const data = {
-                storyGoal,
-                tone,
-                selectedElements,
-                uploadedElements,
-                visualStyle,
-                themePrompt,
-                themeSuggestions,
-                currentStep,
+            const saveToLocalStorage = debounce(() => {
+                const data = {
+                    storyGoal,
+                    tone,
+                    selectedElements,
+                    uploadedElements,
+                    visualStyle,
+                    themePrompt,
+                    themeSuggestions,
+                    currentStep,
+                };
+                try {
+                    localStorage.setItem('magicstory_onboarding', JSON.stringify(data));
+                } catch (err) {
+                    console.error('Failed to save onboarding state:', err);
+                }
+            }, 500); // 500ms debounce for localStorage
+
+            saveToLocalStorage();
+
+            // Clean up
+            return () => {
+                // The debounce function handles its own cleanup
             };
-            try {
-                localStorage.setItem('magicstory_onboarding', JSON.stringify(data));
-            } catch (err) {
-                console.error('Failed to save onboarding state:', err);
-            }
         }
     }, [storyGoal, tone, selectedElements, uploadedElements, visualStyle, themePrompt, themeSuggestions, currentStep, userId]);
 
     // Context action: set story goal
     const setStoryGoal = (goals: string[]) => {
+        if (JSON.stringify(goals) === JSON.stringify(storyGoal)) return; // Skip if unchanged
         _setStoryGoal(goals);
         saveOnboardingPrefs({ storyGoal: goals });
     };
-    // Context action: set tone
+
     const setTone = (tones: string[]) => {
+        if (JSON.stringify(tones) === JSON.stringify(tone)) return; // Skip if unchanged
         _setTone(tones);
         saveOnboardingPrefs({ tone: tones });
     };
@@ -230,6 +284,11 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         // Clear any existing theme suggestions when style changes
         setThemeSuggestions([]);
         _setThemePrompt('');
+
+        // Save the style ID to the database for logged-in users
+        if (userId) {
+            saveOnboardingPrefs({ visualStyleId: style.id });
+        }
     };
 
     // Set custom story prompt text
@@ -239,19 +298,23 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     // Navigation: go to the next step
     const goToNextStep = () => {
-      _setCurrentStep(curr => {
-        const next = Math.min(curr + 1, MAX_STEPS - 1);
-        saveOnboardingPrefs({ currentStep: next });
-        return next;
-      });
+        _setCurrentStep(curr => {
+            const next = Math.min(curr + 1, MAX_STEPS - 1);
+            if (next !== curr) {
+                saveOnboardingPrefs({ currentStep: next });
+            }
+            return next;
+        });
     };
-    // Navigation: go to previous step
+
     const goToPrevStep = () => {
-      _setCurrentStep(curr => {
-        const prev = Math.max(curr - 1, 0);
-        saveOnboardingPrefs({ currentStep: prev });
-        return prev;
-      });
+        _setCurrentStep(curr => {
+            const prev = Math.max(curr - 1, 0);
+            if (prev !== curr) {
+                saveOnboardingPrefs({ currentStep: prev });
+            }
+            return prev;
+        });
     };
 
     // Upload a new image (character/pet/location/object) and analyze it via AI
@@ -281,29 +344,24 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
             const data = await response.json();
 
-            // Create an element object from the upload response that matches your actual MyWorldElement interface
+            // Create an element object from the upload response
             const newElement: MyWorldElement = {
                 id: data.elementId,
                 name: data.name || `My ${category.toLowerCase()}`,
                 description: '',
                 imageUrl: data.url,
-                // Remove thumbnailUrl if it's not in your interface
-                // thumbnailUrl: data.url || data.thumbnailUrl,
                 category: category,
                 publicId: data.public_id,
                 isDetectedInStory: false,
                 isDefault: false,
-                userId: userId || null, // Use undefined instead of null
-                tempId: userId ? null: tempId || null,
+                userId: userId || null,
+                tempId: userId ? null : tempId,
                 createdAt: new Date(),
                 updatedAt: new Date(),
             };
 
-            // Add any other required properties that might be in your MyWorldElement interface
-
             // Add the new element to the state
             setUploadedElements(prev => [...prev, newElement]);
-
 
             // Analyze the image to get detailed attributes
             const analysisResponse = await fetch('/api/images/analyze', {
@@ -339,14 +397,19 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             return newElement;
         } catch (error) {
             console.error('Error uploading file:', error);
+            toast.error('Upload failed', {
+                description: 'Failed to upload and analyze the image.'
+            });
             throw error;
         } finally {
             setIsAnalyzingImage(false);
         }
     };
+
     // Generate theme suggestions for the story prompt based on selected elements and style
     const generateThemeSuggestions = async () => {
         if (!visualStyle) return;
+
         try {
             setIsLoadingSuggestions(true);
             const res = await fetch('/api/story/theme-suggestions', {
@@ -355,10 +418,12 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 body: JSON.stringify({
                     selectedElements,
                     visualStyle,
-                    tone // you could include tone to tailor suggestions
+                    tone // include tone to tailor suggestions
                 }),
             });
+
             if (!res.ok) throw new Error('Failed to fetch theme suggestions');
+
             const { suggestions } = await res.json();
             setThemeSuggestions(suggestions || []);
         } catch (error) {
@@ -369,16 +434,35 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 { title: "Friendship", text: `A heartwarming ${visualStyle.name} tale about friendship and teamwork.` },
                 { title: "Discovery", text: `A curious ${visualStyle.name} journey full of discoveries and surprises.` }
             ]);
+
+            toast.error('Failed to get theme suggestions', {
+                description: 'Using default suggestions instead'
+            });
         } finally {
             setIsLoadingSuggestions(false);
         }
     };
 
-    // Create/generate the story based on current selections (returns a story ID if successful)
-    const createStory = async (): Promise<string | undefined> => {
-        if (!visualStyle || !themePrompt.trim()) return undefined;
+    // Create/generate the story based on current selections
+    const createStory = async (): Promise<{ id: string; status: string } | undefined> => {
+        setIsGenerating(true);
+        setGenerationError(null);
+        setGenerationProgress(0);
+        setIsGeneratingStory(true);
+
         try {
-            setIsGeneratingStory(true);
+            if (!visualStyle || !themePrompt) {
+                throw new Error('Missing required story information');
+            }
+
+            // Log the request data for debugging
+            console.log('Creating story with:', {
+                prompt: themePrompt,
+                styleId: visualStyle.id,
+                styleName: visualStyle.name,
+                tone
+            });
+
             const response = await fetch('/api/story/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -386,26 +470,84 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                     prompt: themePrompt,
                     styleId: visualStyle.id,
                     styleName: visualStyle.name,
-                    // Include optional context parameters (goal, tone, selected element IDs) to guide generation
-                    tone: tone || undefined,
-                    // We can pass character names or descriptions as part of prompt if needed, but skip for now
-                    tempId: userId ? undefined : tempId  // include tempId for guest story
-                })
+                    tone: tone || [],
+                    lengthInPages: 5 // Using 5 pages as requested
+                }),
             });
-            if (!response.ok) throw new Error('Story creation failed');
+
+            // Check for non-200 responses
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errorMessage = errorData.error || `Server error: ${response.status}`;
+                console.error('Story creation failed:', errorMessage);
+                throw new Error(errorMessage);
+            }
+
             const data = await response.json();
-            const newStoryId = data.storyId || data.id;  // API might return storyId or id
-            setGeneratedStoryId(newStoryId);
-            console.log('Story created with ID:', newStoryId);
-            return newStoryId;
-        } catch (error) {
-            console.error('Error creating story:', error);
-            // Handle error (e.g., show notification)
+            console.log('Story creation response:', data);
+
+            if (!data.id) {
+                throw new Error('No story ID received from server');
+            }
+
+            // Set the generated story ID and return success
+            setGeneratedStoryId(data.id);
+            setGenerationProgress(25); // Initial progress after creation
+
+            return { id: data.id, status: data.status };
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error creating story';
+            console.error('Story creation error:', errorMessage);
+            setGenerationError(errorMessage);
+            toast.error('Story creation failed', {
+                description: errorMessage
+            });
             return undefined;
         } finally {
-            setIsGeneratingStory(false);
+            setIsGenerating(false);
+            // Note: We don't set isGeneratingStory to false here because
+            // we still need to track the story generation progress via polling
         }
     };
+
+    // Update progress when story is being generated
+    useEffect(() => {
+        let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+        if (generatedStoryId && generationProgress < 100) {
+            pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/story/${generatedStoryId}`);
+                    if (!response.ok) return;
+
+                    const storyData = await response.json();
+
+                    // Update progress based on status
+                    if (storyData.status === StoryStatus.READY) {
+                        setGenerationProgress(100);
+                        setIsGeneratingStory(false);
+                        if (pollInterval !== null) clearInterval(pollInterval);
+                    } else if (storyData.status === StoryStatus.GENERATING) {
+                        // Calculate progress based on pages
+                        const pagesCreated = storyData.pages?.length || 0;
+                        const targetPages = 5;
+                        const newProgress = Math.min(90, 25 + (pagesCreated / targetPages * 65));
+                        setGenerationProgress(newProgress);
+                    } else if (storyData.status === StoryStatus.CANCELLED) {
+                        setGenerationError('Story generation was cancelled');
+                        setIsGeneratingStory(false);
+                        if (pollInterval !== null) clearInterval(pollInterval);
+                    }
+                } catch (error) {
+                    console.error('Error polling story status:', error);
+                }
+            }, 2000);
+        }
+
+        return () => {
+            if (pollInterval !== null) clearInterval(pollInterval);
+        };
+    }, [generatedStoryId, generationProgress]);
 
     // Provide the context value to children
     const value: OnboardingState = {
@@ -422,6 +564,11 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         isAnalyzingImage,
         isGeneratingStory,
         generatedStoryId,
+        isGenerating,
+        generationProgress,
+        generationError,
+        setGeneratedStoryId,
+        setGenerationError,
         setStoryGoal,
         setTone,
         addElement,
@@ -469,7 +616,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             };
             migrateData();
         }
-    }, [userId, tempId, generatedStoryId]);
+    }, [userId, tempId, generatedStoryId, storyGoal, tone]);
 
     return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;
 }
