@@ -1,9 +1,14 @@
 'use client';
-import React, { createContext, useContext, useCallback, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { ElementCategory, StoryStatus } from '@prisma/client';
-import { useAuth } from '@clerk/nextjs';  // Clerk hook to detect logged-in user
+import { useAuth } from '@clerk/nextjs';
 import type { OnboardingSession, MyWorldElement } from '@prisma/client';
-import { toast } from 'sonner'; // Import toast from sonner
+import { toast } from 'sonner';
+
+// Add isPrimary to our internal element type
+type EnhancedMyWorldElement = MyWorldElement & {
+    isPrimary?: boolean | null;
+};
 
 type VisualStyle = {
     id: string;
@@ -21,12 +26,13 @@ interface OnboardingState {
     storyGoal: string[];
     tone: string[];
     tempId: string | null;
-    selectedElements: MyWorldElement[];
-    uploadedElements: MyWorldElement[];  // all uploaded elements (selected or not)
+    selectedElements: EnhancedMyWorldElement[];
+    uploadedElements: EnhancedMyWorldElement[];
     visualStyle?: VisualStyle;
     themePrompt: string;
     themeSuggestions: { title: string; text: string; imageUrl?: string }[];
     currentStep: number;
+    primaryCharacterId: string | null;
     // Loading/generation flags
     isLoadingSuggestions: boolean;
     isAnalyzingImage: boolean;
@@ -40,12 +46,13 @@ interface OnboardingState {
     setGeneratedStoryId: (id: string | undefined) => void;
     setStoryGoal: (goals: string[]) => void;
     setTone: (tones: string[]) => void;
-    addElement: (el: MyWorldElement) => void;
+    addElement: (el: EnhancedMyWorldElement) => void;
     removeElement: (id: string) => void;
     clearAllElements: () => void;
-    addUploadedImage: (file: File, category: ElementCategory) => Promise<MyWorldElement | undefined>;
+    addUploadedImage: (file: File, category: ElementCategory) => Promise<EnhancedMyWorldElement | undefined>;
     updateElementName: (id: string, name: string) => void;
     updateElementDescription: (id: string, description: string) => void;
+    setPrimaryCharacter: (id: string | null) => void;
     setVisualStyle: (style: VisualStyle) => void;
     setThemePrompt: (prompt: string) => void;
     generateThemeSuggestions: () => Promise<void>;
@@ -55,21 +62,6 @@ interface OnboardingState {
     // Error handling
     setGenerationError: (error: string | null) => void;
 }
-
-
-const debounce = <F extends (...args: any[]) => any>(
-    func: F,
-    wait: number
-): ((...args: Parameters<F>) => void) => {
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-
-    return function(...args: Parameters<F>) {
-        if (timeout !== null) {
-            clearTimeout(timeout);
-        }
-        timeout = setTimeout(() => func(...args), wait);
-    };
-};
 
 // Create context
 const OnboardingContext = createContext<OnboardingState | undefined>(undefined);
@@ -83,8 +75,8 @@ export function useOnboarding() {
 
 // OnboardingProvider component
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
-    const { userId } = useAuth();  // Clerk user ID (if logged in)
-    const MAX_STEPS = 11;          // Total steps: 0-11 in the wizard
+    const { userId } = useAuth();
+    const MAX_STEPS = 11;
 
     // Determine or generate a tempId for guest sessions only
     const [tempId, setTempId] = useState<string | null>(null);
@@ -105,6 +97,49 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         }
     }, [userId]);
 
+    // Onboarding state variables
+    const [storyGoal, _setStoryGoal] = useState<string[]>([]);
+    const [tone, _setTone] = useState<string[]>([]);
+    const [selectedElements, setSelectedElements] = useState<EnhancedMyWorldElement[]>([]);
+    const [uploadedElements, setUploadedElements] = useState<EnhancedMyWorldElement[]>([]);
+    const [visualStyle, _setVisualStyle] = useState<VisualStyle | undefined>();
+    const [themePrompt, _setThemePrompt] = useState<string>('');
+    const [themeSuggestions, setThemeSuggestions] = useState<Array<{ title: string; text: string; imageUrl?: string }>>([]);
+    const [currentStep, _setCurrentStep] = useState<number>(0);
+    const [primaryCharacterId, _setPrimaryCharacterId] = useState<string | null>(null);
+
+    // Loading flags
+    const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+    const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+    const [isGeneratingStory, setIsGeneratingStory] = useState(false);
+    const [generatedStoryId, setGeneratedStoryId] = useState<string | undefined>();
+
+    // Story generation tracking
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generationProgress, setGenerationProgress] = useState(0);
+    const [generationError, setGenerationError] = useState<string | null>(null);
+
+    // Set primary character (new function)
+    const setPrimaryCharacter = useCallback((id: string | null) => {
+        _setPrimaryCharacterId(id);
+
+        // Update isPrimary flag on all elements
+        setSelectedElements(prev =>
+            prev.map(element => ({
+                ...element,
+                isPrimary: element.id === id
+            }))
+        );
+
+        // Also update in uploadedElements
+        setUploadedElements(prev =>
+            prev.map(element => ({
+                ...element,
+                isPrimary: element.id === id
+            }))
+        );
+    }, []);
+
     // Load onboarding data for logged in users
     useEffect(() => {
         if (!userId) return;
@@ -122,138 +157,74 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         })();
     }, [userId]);
 
-    // Onboarding state variables
-    const [storyGoal, _setStoryGoal] = useState<string[]>([]);
-    const [tone, _setTone] = useState<string[]>([]);
-    const [selectedElements, setSelectedElements] = useState<MyWorldElement[]>([]);
-    const [uploadedElements, setUploadedElements] = useState<MyWorldElement[]>([]);
-    const [visualStyle, _setVisualStyle] = useState<VisualStyle | undefined>();
-    const [themePrompt, _setThemePrompt] = useState<string>('');
-    const [themeSuggestions, setThemeSuggestions] = useState<Array<{ title: string; text: string; imageUrl?: string }>>([]);
-    const [currentStep, _setCurrentStep] = useState<number>(0);
-
-    // Loading flags
-    const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-    const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
-    const [isGeneratingStory, setIsGeneratingStory] = useState(false);
-    const [generatedStoryId, setGeneratedStoryId] = useState<string | undefined>();
-
-    // Story generation tracking
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [generationProgress, setGenerationProgress] = useState(0);
-    const [generationError, setGenerationError] = useState<string | null>(null);
-
-    // Persist onboarding preferences for signed-in users
-    const debouncedSave = useCallback(
-        debounce((prefs: Partial<OnboardingSession>) => {
-            if (!userId) return;
-
-            fetch('/api/onboarding/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(prefs),
-            }).catch(console.error);
-        }, 1000), // 1 second debounce
-        [userId]
-    );
-
-    function saveOnboardingPrefs(prefs: Partial<OnboardingSession>) {
-        if (!userId) return;
-        debouncedSave(prefs);
-    }
-    // Hydrate state from localStorage on initial render (for returning guest)
-    useEffect(() => {
-        if (userId) return;
-        try {
-            const saved = localStorage.getItem('magicstory_onboarding');
-            if (saved) {
-                const data = JSON.parse(saved);
-                if (data.storyGoal) {
-                    if (Array.isArray(data.storyGoal)) {
-                        _setStoryGoal(data.storyGoal);
-                    } else if (typeof data.storyGoal === 'string') {
-                        _setStoryGoal([data.storyGoal]);
-                    }
-                }
-                if (data.tone) {
-                    if (Array.isArray(data.tone)) {
-                        _setTone(data.tone);
-                    } else if (typeof data.tone === 'string') {
-                        _setTone([data.tone]);
-                    }
-                }
-                if (data.selectedElements) setSelectedElements(data.selectedElements);
-                if (data.uploadedElements) setUploadedElements(data.uploadedElements);
-                if (data.visualStyle) _setVisualStyle(data.visualStyle);
-                if (data.themePrompt) _setThemePrompt(data.themePrompt);
-                if (data.themeSuggestions) setThemeSuggestions(data.themeSuggestions);
-                if (data.currentStep !== undefined) _setCurrentStep(data.currentStep);
-            }
-        } catch (err) {
-            console.warn('Failed to parse saved onboarding data:', err);
-        }
-    }, [userId]);
-
-    // Persist state to localStorage whenever it changes (for guest persistence)
-    useEffect(() => {
-        if (!userId) {
-            const saveToLocalStorage = debounce(() => {
-                const data = {
-                    storyGoal,
-                    tone,
-                    selectedElements,
-                    uploadedElements,
-                    visualStyle,
-                    themePrompt,
-                    themeSuggestions,
-                    currentStep,
-                };
-                try {
-                    localStorage.setItem('magicstory_onboarding', JSON.stringify(data));
-                } catch (err) {
-                    console.error('Failed to save onboarding state:', err);
-                }
-            }, 500); // 500ms debounce for localStorage
-
-            saveToLocalStorage();
-
-            // Clean up
-            return () => {
-                // The debounce function handles its own cleanup
-            };
-        }
-    }, [storyGoal, tone, selectedElements, uploadedElements, visualStyle, themePrompt, themeSuggestions, currentStep, userId]);
-
     // Context action: set story goal
     const setStoryGoal = useCallback((goals: string[]) => {
-        if (JSON.stringify(goals) === JSON.stringify(storyGoal)) return; // Skip if unchanged
         _setStoryGoal(goals);
         saveOnboardingPrefs({ storyGoal: goals });
     }, [storyGoal, saveOnboardingPrefs]);
 
+    // Context action: set tone
     const setTone = useCallback((tones: string[]) => {
-        if (JSON.stringify(tones) === JSON.stringify(tone)) return; // Skip if unchanged
         _setTone(tones);
         saveOnboardingPrefs({ tone: tones });
     }, [tone, saveOnboardingPrefs]);
 
     // Add a MyWorld element to the selected list
-    const addElement = useCallback((element: MyWorldElement) => {
+    const addElement = useCallback((element: EnhancedMyWorldElement) => {
         setSelectedElements(curr => {
             // Avoid duplicates
             if (curr.find(el => el.id === element.id)) return curr;
+
+            // If this is the first character added, make it primary by default
+            if (curr.length === 0 && !primaryCharacterId &&
+                (element.category === 'CHARACTER' || element.category === 'PET')) {
+                setPrimaryCharacter(element.id);
+                // Include isPrimary flag directly
+                return [...curr, {...element, isPrimary: true}];
+            }
+
             return [...curr, element];
         });
     }, []);
 
     // Remove an element from selection
     const removeElement = useCallback((id: string) => {
-        setSelectedElements(curr => curr.filter(el => el.id !== id));
+        // Check if we're removing the primary character
+        const isPrimaryElement = primaryCharacterId === id;
+
+        setSelectedElements(curr => {
+            const filtered = curr.filter(el => el.id !== id);
+
+            // If we removed the primary character, set the first available character as primary
+            if (isPrimaryElement && filtered.length > 0) {
+                const firstCharacter = filtered.find(
+                    el => el.category === 'CHARACTER' || el.category === 'PET'
+                );
+                if (firstCharacter) {
+                    setPrimaryCharacter(firstCharacter.id);
+                }
+            }
+
+            return filtered;
+        });
+
+        // If we removed the primary character and have no more elements, clear primaryCharacterId
+        if (isPrimaryElement) {
+            const remainingElements = selectedElements.filter(el => el.id !== id);
+            const hasEligibleElements = remainingElements.some(
+                el => el.category === 'CHARACTER' || el.category === 'PET'
+            );
+
+            if (!hasEligibleElements) {
+                setPrimaryCharacter(null);
+            }
+        }
     }, []);
 
     // Clear all selected elements
     const clearAllElements = useCallback(() => {
         setSelectedElements([]);
+        setPrimaryCharacter(null);
     }, []);
 
     // Update element name in selected (e.g., after editing)
@@ -300,25 +271,41 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     const goToNextStep = useCallback(() => {
         _setCurrentStep(curr => {
             const next = Math.min(curr + 1, MAX_STEPS - 1);
-            if (next !== curr) {
-                saveOnboardingPrefs({ currentStep: next });
-            }
+            saveOnboardingPrefs({ currentStep: next });
             return next;
         });
     }, [saveOnboardingPrefs]);
 
+    // Navigation: go to previous step
     const goToPrevStep = useCallback(() => {
         _setCurrentStep(curr => {
             const prev = Math.max(curr - 1, 0);
-            if (prev !== curr) {
-                saveOnboardingPrefs({ currentStep: prev });
-            }
+            saveOnboardingPrefs({ currentStep: prev });
             return prev;
         });
     }, [saveOnboardingPrefs]);
 
+    // Persist onboarding preferences for signed-in users
+    const debouncedSave = React.useCallback(
+        debounce((prefs: Partial<OnboardingSession>) => {
+            if (!userId) return;
+
+            fetch('/api/onboarding/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(prefs),
+            }).catch(console.error);
+        }, 1000), // 1 second debounce
+        [userId]
+    );
+
+    function saveOnboardingPrefs(prefs: Partial<OnboardingSession>) {
+        if (!userId) return;
+        debouncedSave(prefs);
+    }
+
     // Upload a new image (character/pet/location/object) and analyze it via AI
-    const addUploadedImage = async (file: File, category: ElementCategory = 'CHARACTER') => {
+    const addUploadedImage = useCallback(async (file: File, category: ElementCategory = 'CHARACTER') => {
         setIsAnalyzingImage(true);
 
         try {
@@ -345,7 +332,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             const data = await response.json();
 
             // Create an element object from the upload response
-            const newElement: MyWorldElement = {
+            const newElement: EnhancedMyWorldElement = {
                 id: data.elementId,
                 name: data.name || `My ${category.toLowerCase()}`,
                 description: '',
@@ -358,7 +345,15 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 tempId: userId ? null : tempId,
                 createdAt: new Date(),
                 updatedAt: new Date(),
+                isPrimary: false, // Default to not primary
             };
+
+            // If this is the first element and it's a character or pet, make it primary
+            if (selectedElements.length === 0 &&
+                (category === 'CHARACTER' || category === 'PET')) {
+                newElement.isPrimary = true;
+                _setPrimaryCharacterId(newElement.id);
+            }
 
             // Add the new element to the state
             setUploadedElements(prev => [...prev, newElement]);
@@ -380,7 +375,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 const analysisData = await analysisResponse.json();
 
                 // Update element with analysis data
-                const updatedElement: MyWorldElement = {
+                const updatedElement: EnhancedMyWorldElement = {
                     ...newElement,
                     name: analysisData.suggestedName || newElement.name,
                     description: analysisData.description || '',
@@ -404,9 +399,9 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         } finally {
             setIsAnalyzingImage(false);
         }
-    };
+    }, [tempId, userId, selectedElements]);
 
-    // Generate theme suggestions for the story prompt based on selected elements and style
+    // Generate theme suggestions
     const generateThemeSuggestions = useCallback(async () => {
         if (!visualStyle) return;
 
@@ -418,7 +413,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 body: JSON.stringify({
                     selectedElements,
                     visualStyle,
-                    tone // include tone to tailor suggestions
+                    tone,
+                    primaryCharacterId
                 }),
             });
 
@@ -441,7 +437,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         } finally {
             setIsLoadingSuggestions(false);
         }
-    }, [visualStyle, selectedElements, tone]);
+    }, [visualStyle, selectedElements, tone, primaryCharacterId]);
 
     // Create/generate the story based on current selections
     const createStory = useCallback(async (): Promise<{ id: string; status: string } | undefined> => {
@@ -460,7 +456,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 prompt: themePrompt,
                 styleId: visualStyle.id,
                 styleName: visualStyle.name,
-                tone
+                tone,
+                primaryCharacterId
             });
 
             const response = await fetch('/api/story/create', {
@@ -471,7 +468,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                     styleId: visualStyle.id,
                     styleName: visualStyle.name,
                     tone: tone || [],
-                    lengthInPages: 5 // Using 5 pages as requested
+                    primaryCharacterId,
+                    lengthInPages: 5
                 }),
             });
 
@@ -508,7 +506,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             // Note: We don't set isGeneratingStory to false here because
             // we still need to track the story generation progress via polling
         }
-    }, [visualStyle, themePrompt, tone]);
+    }, [visualStyle, themePrompt, tone, primaryCharacterId]);
 
     // Update progress when story is being generated
     useEffect(() => {
@@ -549,6 +547,62 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         };
     }, [generatedStoryId, generationProgress]);
 
+    // Hydrate state from localStorage on initial render (for returning guest)
+    useEffect(() => {
+        if (userId) return;
+        try {
+            const saved = localStorage.getItem('magicstory_onboarding');
+            if (saved) {
+                const data = JSON.parse(saved);
+                if (data.storyGoal) {
+                    if (Array.isArray(data.storyGoal)) {
+                        _setStoryGoal(data.storyGoal);
+                    } else if (typeof data.storyGoal === 'string') {
+                        _setStoryGoal([data.storyGoal]);
+                    }
+                }
+                if (data.tone) {
+                    if (Array.isArray(data.tone)) {
+                        _setTone(data.tone);
+                    } else if (typeof data.tone === 'string') {
+                        _setTone([data.tone]);
+                    }
+                }
+                if (data.selectedElements) setSelectedElements(data.selectedElements);
+                if (data.uploadedElements) setUploadedElements(data.uploadedElements);
+                if (data.visualStyle) _setVisualStyle(data.visualStyle);
+                if (data.themePrompt) _setThemePrompt(data.themePrompt);
+                if (data.themeSuggestions) setThemeSuggestions(data.themeSuggestions);
+                if (data.currentStep !== undefined) _setCurrentStep(data.currentStep);
+                if (data.primaryCharacterId) _setPrimaryCharacterId(data.primaryCharacterId);
+            }
+        } catch (err) {
+            console.warn('Failed to parse saved onboarding data:', err);
+        }
+    }, [userId]);
+
+    // Persist state to localStorage whenever it changes (for guest persistence)
+    useEffect(() => {
+        if (!userId) {
+            const data = {
+                storyGoal,
+                tone,
+                selectedElements,
+                uploadedElements,
+                visualStyle,
+                themePrompt,
+                themeSuggestions,
+                currentStep,
+                primaryCharacterId
+            };
+            try {
+                localStorage.setItem('magicstory_onboarding', JSON.stringify(data));
+            } catch (err) {
+                console.error('Failed to save onboarding state:', err);
+            }
+        }
+    }, [storyGoal, tone, selectedElements, uploadedElements, visualStyle, themePrompt, themeSuggestions, currentStep, primaryCharacterId, userId]);
+
     // Provide the context value to children
     const value: OnboardingState = {
         storyGoal,
@@ -560,6 +614,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         themePrompt,
         themeSuggestions,
         currentStep,
+        primaryCharacterId,
         isLoadingSuggestions,
         isAnalyzingImage,
         isGeneratingStory,
@@ -577,6 +632,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         addUploadedImage,
         updateElementName,
         updateElementDescription,
+        setPrimaryCharacter,
         setVisualStyle,
         setThemePrompt,
         generateThemeSuggestions,
@@ -585,7 +641,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         goToPrevStep,
     };
 
-    // **Migration after signup**: if the user has just signed up (userId now exists), we have guest data, and a story has been generated, trigger migration.
+    // Migration after signup: if the user has just signed up (userId now exists), we have guest data, and a story has been generated, trigger migration.
     useEffect(() => {
         if (userId && tempId && generatedStoryId) {
             // When a guest signs up, migrate their onboarding data to their new account
@@ -619,4 +675,19 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }, [userId, tempId, generatedStoryId, storyGoal, tone]);
 
     return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;
+}
+
+// Utility function for debouncing
+function debounce<F extends (...args: any[]) => any>(
+    func: F,
+    wait: number
+): ((...args: Parameters<F>) => void) {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+
+    return function(...args: Parameters<F>) {
+        if (timeout !== null) {
+            clearTimeout(timeout);
+        }
+        timeout = setTimeout(() => func(...args), wait);
+    };
 }

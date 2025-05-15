@@ -23,6 +23,8 @@ interface CreateStoryRequest {
     theme?: string;
     lengthInPages?: number;
     tempId?: string; // For guest users
+    primaryCharacterId?: string | null;
+    tone?: string[];
 }
 
 interface PageImageGenerationResult {
@@ -40,6 +42,7 @@ interface EditResponse {
 interface CharacterDescriptor {
     type: 'CHARACTER_DESCRIPTOR' | 'SECONDARY_DESCRIPTOR' | 'OBJECT_DESCRIPTOR';
     value: string;
+    isPrimary?: boolean;
 }
 
 /**
@@ -48,7 +51,8 @@ interface CharacterDescriptor {
  */
 async function buildCharacterDescriptors(
     userId?: string | null,
-    tempId?: string | null
+    tempId?: string | null,
+    primaryCharacterId?: string | null
 ): Promise<CharacterDescriptor[]> {
     // Skip if no identifiers provided
     if (!userId && !tempId) return [];
@@ -76,13 +80,24 @@ async function buildCharacterDescriptors(
         let secondaryCount = 1;
 
         for (const element of elements) {
+            // Check if this is the primary character
+            const isPrimary = Boolean(primaryCharacterId && element.id === primaryCharacterId);
+
             switch (element.category) {
                 case ElementCategory.CHARACTER:
                     if (element.characterAttributes) {
                         const char = element.characterAttributes;
                         descriptors.push({
                             type: 'CHARACTER_DESCRIPTOR',
-                            value: `"${element.name} (${char.age || 'unknown age'}; ${char.gender || 'unknown gender'}; ${char.ethnicity || 'Caucasian'}; ${char.hairColor || ''} ${char.hairStyle || 'hair'}; ${char.skinColor || 'skin'}; ${char.eyeColor || 'eyes'}; wearing ${char.outfit || 'casual clothes'}, ${char.accessories || 'no accessories'})"`
+                            value: `"${element.name} (${char.age || 'unknown age'}; ${char.gender || 'unknown gender'}; ${char.ethnicity || 'Caucasian'}; ${char.hairColor || ''} ${char.hairStyle || 'hair'}; ${char.skinColor || 'skin'}; ${char.eyeColor || 'eyes'}; wearing ${char.outfit || 'casual clothes'}, ${char.accessories || 'no accessories'})${isPrimary ? ' [PRIMARY CHARACTER]' : ''}"`,
+                            isPrimary
+                        });
+                    } else {
+                        // If no attributes, create a simpler descriptor
+                        descriptors.push({
+                            type: 'CHARACTER_DESCRIPTOR',
+                            value: `"${element.name} (child; wearing casual clothes)${isPrimary ? ' [PRIMARY CHARACTER]' : ''}"`,
+                            isPrimary
                         });
                     }
                     break;
@@ -92,7 +107,16 @@ async function buildCharacterDescriptors(
                         const pet = element.petAttributes;
                         descriptors.push({
                             type: 'SECONDARY_DESCRIPTOR',
-                            value: `"${element.name} (${pet.breed || 'pet'}; ${pet.furColor || ''} ${pet.furStyle || 'fur'}; ${pet.markings || 'no markings'}; wearing ${pet.collar || 'no collar'})"`
+                            value: `"${element.name} (${pet.breed || 'pet'}; ${pet.furColor || ''} ${pet.furStyle || 'fur'}; ${pet.markings || 'no markings'}; wearing ${pet.collar || 'no collar'})${isPrimary ? ' [PRIMARY CHARACTER]' : ''}"`,
+                            isPrimary
+                        });
+                        secondaryCount++;
+                    } else {
+                        // If no attributes, create a simpler descriptor
+                        descriptors.push({
+                            type: 'SECONDARY_DESCRIPTOR',
+                            value: `"${element.name} (pet)${isPrimary ? ' [PRIMARY CHARACTER]' : ''}"`,
+                            isPrimary
                         });
                         secondaryCount++;
                     }
@@ -103,7 +127,13 @@ async function buildCharacterDescriptors(
                         const loc = element.locationAttributes;
                         descriptors.push({
                             type: 'SECONDARY_DESCRIPTOR',
-                            value: `"${element.name} (location; ${loc.locationType || 'place'}; ${loc.setting || ''}; ${loc.timeOfDay || ''})"`
+                            value: `"${element.name} (location; ${loc.locationType || 'place'}; ${loc.setting || ''}; ${loc.timeOfDay || ''})"`,
+                        });
+                        secondaryCount++;
+                    } else {
+                        descriptors.push({
+                            type: 'SECONDARY_DESCRIPTOR',
+                            value: `"${element.name} (location)"`,
                         });
                         secondaryCount++;
                     }
@@ -124,7 +154,7 @@ async function buildCharacterDescriptors(
         if (objects.length > 0) {
             descriptors.push({
                 type: 'OBJECT_DESCRIPTOR',
-                value: `"${objects.join('; ')}"`
+                value: `"${objects.join('; ')}"`,
             });
         }
 
@@ -169,10 +199,15 @@ async function buildStoryGenerationPrompt(
     audience?: string,
     setting?: string,
     theme?: string,
-    lengthInPages: number = 5
+    lengthInPages: number = 5,
+    tone?: string[],
+    primaryCharacterId?: string | null
 ): Promise<string> {
-    // Get character descriptors
-    const characterDescriptors = await buildCharacterDescriptors(userId, tempId);
+    // Get character descriptors with primary character information
+    const characterDescriptors = await buildCharacterDescriptors(userId, tempId, primaryCharacterId);
+
+    // Find the primary character if it exists
+    const primaryCharacter = characterDescriptors.find(desc => desc.isPrimary);
 
     // Get visual style template
     const styleTemplate = await getVisualStyleTemplate(styleId);
@@ -180,7 +215,14 @@ async function buildStoryGenerationPrompt(
     // Format the character descriptor section
     let descriptorSection = '';
     if (characterDescriptors.length > 0) {
-        const characterLines = characterDescriptors.map(desc => {
+        // Start with primary character if it exists
+        const sortedDescriptors = [...characterDescriptors].sort((a, b) => {
+            if (a.isPrimary) return -1;
+            if (b.isPrimary) return 1;
+            return 0;
+        });
+
+        const characterLines = sortedDescriptors.map(desc => {
             if (desc.type === 'CHARACTER_DESCRIPTOR') {
                 return `CHARACTER_DESCRIPTOR = ${desc.value}`;
             } else if (desc.type === 'SECONDARY_DESCRIPTOR') {
@@ -198,6 +240,14 @@ async function buildStoryGenerationPrompt(
     if (audience) additionalContext += `Target audience: ${audience}. `;
     if (setting) additionalContext += `Setting: ${setting}. `;
     if (theme) additionalContext += `Theme: ${theme}. `;
+    if (tone && tone.length > 0) {
+        additionalContext += `Tone: ${tone.join(', ')}. `;
+    }
+
+    // Add primary character emphasis if applicable
+    if (primaryCharacter) {
+        additionalContext += `Focus on the primary character in the story. The PRIMARY CHARACTER should be the main protagonist. `;
+    }
 
     // Get onboarding session data for additional context
     let onboarding = null;
@@ -241,6 +291,7 @@ IMPORTANT RULES FOR CHARACTER USAGE:
 2. In illustration prompts, use ONLY the text inside the quotes, WITHOUT the labels
 3. MAINTAIN ABSOLUTE CONSISTENCY for ALL characters throughout ALL pages
 4. NEVER abbreviate character descriptions after the first page
+${primaryCharacter ? "5. The PRIMARY CHARACTER should be the protagonist and main focus of the story" : ""}
 
 For each of ${lengthInPages} pages, provide a story snippet and its illustration prompt:
 
@@ -311,13 +362,30 @@ async function generateStoryContent(
     setting?: string,
     theme?: string,
     tones: string[] = [],
-    lengthInPages: number = 5
+    lengthInPages: number = 5,
+    primaryCharacterId?: string | null
 ): Promise<{ title: string; pages: { storyText: string; illustrationPrompt: string }[] }> {
     try {
+        // Get primary character info if available
+        let primaryCharacterInfo = "";
+        if (primaryCharacterId) {
+            const primaryCharacter = await prisma.myWorldElement.findUnique({
+                where: { id: primaryCharacterId },
+                include: { characterAttributes: true, petAttributes: true }
+            });
+
+            if (primaryCharacter) {
+                primaryCharacterInfo = `The main character is ${primaryCharacter.name}. `;
+                if (primaryCharacter.description) {
+                    primaryCharacterInfo += `${primaryCharacter.description}. `;
+                }
+            }
+        }
 
         const systemPrompt = `
             You are an expert children's book author who writes in the ${styleName} style.
             Create a ${lengthInPages}-page children's story about: "${prompt}"
+            ${primaryCharacterInfo}
             ${tones.length > 0 ? `The tone should be: ${tones.join(', ')}` : ''}
             
             Format your response as JSON with the following structure:
@@ -336,11 +404,13 @@ async function generateStoryContent(
             - The story should have a clear beginning, middle, and end
             - Make the story exactly ${lengthInPages} pages long
             - Each illustration prompt should be detailed and reflect the ${styleName} style
+            ${primaryCharacterId ? "- Focus on the main character throughout the story" : ""}
         `;
+
         // Build the complete template-based prompt
         const templatePrompt = await buildStoryGenerationPrompt(
             prompt, styleId, styleName, userId, tempId,
-            narrator, audience, setting, theme, lengthInPages
+            narrator, audience, setting, theme, lengthInPages, tones, primaryCharacterId
         );
 
         // Log the prompt for debugging (beginning only)
@@ -363,15 +433,12 @@ async function generateStoryContent(
             temperature: 0.7,
         });
 
-
-
         const content = response.choices[0].message.content;
 
         console.log('Generated story content:', content);
         if (!content) {
             throw new Error("Failed to generate story content");
         }
-        // return;
 
         // Parse the JSON response
         const storyData = JSON.parse(content) as {
@@ -440,7 +507,6 @@ async function generateStoryImages(storyId: string, pages: { storyText: string; 
                 formData.append('n', '1');
 
                 // Use fetch with the server's full URL to call our edit API endpoint
-                const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
                 const editResponse = await fetch(`/api/images/edit`, {
                     method: 'POST',
                     body: formData,
@@ -549,11 +615,37 @@ export async function POST(req: NextRequest) {
             setting,
             theme = 'adventure', // Default theme
             lengthInPages = 5,  // Default to 5 pages
+            primaryCharacterId,
             title: providedTitle,
             tempId,              // For guest users
+            tone = [],           // Default to empty array
         } = requestData;
 
-        console.log(requestData)
+        console.log("Story creation request data:", {
+            prompt,
+            styleId,
+            styleName,
+            primaryCharacterId,
+            tone
+        });
+
+        // If there's a primary character specified, include it in the prompt
+        let primaryCharacter = null;
+        if (primaryCharacterId) {
+            primaryCharacter = await prisma.myWorldElement.findUnique({
+                where: { id: primaryCharacterId },
+                include: {
+                    characterAttributes: true,
+                    petAttributes: true
+                }
+            });
+
+            if (primaryCharacter) {
+                console.log(`Primary character found: ${primaryCharacter.name}`);
+            } else {
+                console.log(`Primary character ID ${primaryCharacterId} not found`);
+            }
+        }
 
         // Validate required fields
         if (!prompt) {
@@ -585,6 +677,8 @@ export async function POST(req: NextRequest) {
                 styleName, // Store the style name for easy reference
                 status: StoryStatus.GENERATING,
                 language: 'en',
+                // Store primary character ID if provided
+                // primaryCharacterId: primaryCharacterId || null
             }
         });
 
@@ -616,7 +710,8 @@ export async function POST(req: NextRequest) {
             if (elements.length > 0) {
                 const storyElements = elements.map(element => ({
                     storyId: story.id,
-                    elementId: element.id
+                    elementId: element.id,
+                    isPrimary: primaryCharacterId ? element.id === primaryCharacterId : false
                 }));
 
                 await prisma.storyElement.createMany({
@@ -640,8 +735,9 @@ export async function POST(req: NextRequest) {
                     audience,
                     setting,
                     theme,
-                    [],                // tones
-                    lengthInPages      // page count
+                    tone,
+                    lengthInPages,
+                    primaryCharacterId
                 );
 
                 // Update the story title (if not provided)

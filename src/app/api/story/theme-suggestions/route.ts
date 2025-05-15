@@ -4,14 +4,17 @@ import OpenAI from 'openai';
 import { ElementCategory } from '@prisma/client';
 
 interface SelectedElement {
-  id: string;
-  name: string;
-  category: ElementCategory;
+    id: string;
+    name: string;
+    category: ElementCategory;
+    description?: string;
+    isPrimary?: boolean;
+    // Any other relevant properties
 }
 
 interface VisualStyle {
-  id: string;
-  name: string;
+    id: string;
+    name: string;
 }
 
 const openai = new OpenAI({
@@ -27,14 +30,18 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const body = (await req.json()) as {
+        const body = await req.json() as {
             selectedElements?: SelectedElement[];
             visualStyle?: VisualStyle | null;
+            tone?: string[];
+            primaryCharacterId?: string | null;
         };
 
         const selectedElements = body.selectedElements ?? [];
         const visualStyle = body.visualStyle;
         const visualStyleName = visualStyle?.name ?? 'unknown style';
+        const tone = body.tone || [];
+        const primaryCharacterId = body.primaryCharacterId;
 
         if (!visualStyle) {
             return NextResponse.json({ error: 'Missing visual style' }, { status: 400 });
@@ -70,15 +77,37 @@ export async function POST(req: NextRequest) {
         const locations = selectedElements.filter(el => el.category === ElementCategory.LOCATION);
         const objects = selectedElements.filter(el => el.category === ElementCategory.OBJECT);
 
+        // Find the primary character if specified
+        const primaryCharacter = selectedElements.find(el =>
+            (primaryCharacterId && el.id === primaryCharacterId) ||
+            el.isPrimary === true
+        );
+
         // Create a prompt based on the selected elements and style
         let prompt = `Generate 4 creative, diverse story ideas for a children's book in ${visualStyleName} style.`;
 
+        // Add tone information if available
+        if (tone && tone.length > 0) {
+            prompt += ` The tone should be ${tone.join(', ')}.`;
+        }
+
+        // Add primary character information
+        if (primaryCharacter) {
+            prompt += ` The main character is ${primaryCharacter.name}${primaryCharacter.description ? ` who ${primaryCharacter.description}` : ''}.`;
+        }
+
         if (characters.length > 0) {
-            prompt += ` The story should feature these characters: ${characters.map(c => c.name).join(', ')}.`;
+            const nonPrimaryCharacters = characters.filter(c => c.id !== primaryCharacterId && !c.isPrimary);
+            if (nonPrimaryCharacters.length > 0) {
+                prompt += ` The story should also feature these characters: ${nonPrimaryCharacters.map(c => `${c.name}${c.description ? ` who ${c.description}` : ''}`).join(', ')}.`;
+            }
         }
 
         if (pets.length > 0) {
-            prompt += ` The story should include these pets/animals: ${pets.map(p => p.name).join(', ')}.`;
+            const nonPrimaryPets = pets.filter(p => p.id !== primaryCharacterId && !p.isPrimary);
+            if (nonPrimaryPets.length > 0) {
+                prompt += ` The story should include these pets/animals: ${nonPrimaryPets.map(p => `${p.name}${p.description ? ` who ${p.description}` : ''}`).join(', ')}.`;
+            }
         }
 
         if (locations.length > 0) {
@@ -89,7 +118,7 @@ export async function POST(req: NextRequest) {
             prompt += ` The story should incorporate these objects: ${objects.map(o => o.name).join(', ')}.`;
         }
 
-        prompt += ` Each story idea should have a title (like "Adventure" or "Friendship") and a brief, engaging description (about 20-30 words) that parents can use as a theme for a children's book. Make them diverse in tone and themes (adventure, friendship, learning, etc). Format as JSON with an array of objects containing "title" and "text" fields.`;
+        prompt += ` Each story idea should have a title (like "Adventure" or "Friendship") and a brief, engaging description (about 20-30 words) that parents can use as a theme for a children's book. Format the response as a JSON object with a 'suggestions' array containing objects with 'title' and 'text' fields.`;
 
         // Get suggestions from GPT
         const response = await openai.chat.completions.create({
@@ -133,24 +162,28 @@ export async function POST(req: NextRequest) {
                     return NextResponse.json({ suggestions });
                 }
 
-                // Fallback to generic suggestions with the style
+                // Fallback to generic suggestions with the style and primary character name
+                const mainCharacterName = primaryCharacter?.name ||
+                    (characters.length > 0 ? characters[0].name :
+                        (pets.length > 0 ? pets[0].name : 'our hero'));
+
                 return NextResponse.json({
                     suggestions: [
                         {
                             title: "Adventure",
-                            text: `An exciting ${visualStyleName} adventure with ${characters[0]?.name || 'our hero'}.`
+                            text: `An exciting ${visualStyleName} adventure with ${mainCharacterName} discovering hidden treasures.`
                         },
                         {
                             title: "Friendship",
-                            text: `A heartwarming ${visualStyleName} story about forming new friendships.`
+                            text: `A heartwarming ${visualStyleName} story about ${mainCharacterName} forming new friendships.`
                         },
                         {
                             title: "Discovery",
-                            text: `A journey of discovery in ${visualStyleName} style with ${characters[0]?.name || 'our characters'}.`
+                            text: `A journey of discovery in ${visualStyleName} style with ${mainCharacterName} exploring new wonders.`
                         },
                         {
                             title: "Problem-solving",
-                            text: `A ${visualStyleName} tale where characters work together to solve challenges.`
+                            text: `A ${visualStyleName} tale where ${mainCharacterName} uses creativity to overcome challenges.`
                         }
                     ]
                 });
@@ -158,24 +191,28 @@ export async function POST(req: NextRequest) {
         } catch (error) {
             // Fallback if parsing fails
             console.error('Failed to parse GPT response:', error);
+            const mainCharacterName = primaryCharacter?.name ||
+                (characters.length > 0 ? characters[0].name :
+                    (pets.length > 0 ? pets[0].name : 'our hero'));
+
             return NextResponse.json({
                 error: 'Failed to parse suggestions',
                 suggestions: [
                     {
                         title: "Adventure",
-                        text: `An exciting ${visualStyleName} adventure with ${characters[0]?.name || 'our hero'}.`
+                        text: `An exciting ${visualStyleName} adventure with ${mainCharacterName} discovering hidden treasures.`
                     },
                     {
                         title: "Friendship",
-                        text: `A heartwarming ${visualStyleName} story about forming new friendships.`
+                        text: `A heartwarming ${visualStyleName} story about ${mainCharacterName} forming new friendships.`
                     },
                     {
                         title: "Discovery",
-                        text: `A journey of discovery in ${visualStyleName} style with ${characters[0]?.name || 'our characters'}.`
+                        text: `A journey of discovery in ${visualStyleName} style with ${mainCharacterName} exploring new wonders.`
                     },
                     {
                         title: "Problem-solving",
-                        text: `A ${visualStyleName} tale where characters work together to solve challenges.`
+                        text: `A ${visualStyleName} tale where ${mainCharacterName} uses creativity to overcome challenges.`
                     }
                 ]
             });

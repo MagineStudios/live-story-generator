@@ -88,6 +88,7 @@ model StoryElement {
   myWorldElement MyWorldElement @relation(fields: [elementId], references: [id])
   elementId      String
   createdAt      DateTime       @default(now())
+  isPrimary      Boolean        @default(false)
 
   @@unique([storyId, elementId])
 }
