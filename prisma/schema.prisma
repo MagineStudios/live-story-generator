@@ -82,13 +82,13 @@ model Story {
 
 // New model for story elements
 model StoryElement {
-  id             String         @id @default(cuid())
-  story          Story          @relation(fields: [storyId], references: [id])
-  storyId        String
-  myWorldElement MyWorldElement @relation(fields: [elementId], references: [id])
-  elementId      String
-  createdAt      DateTime       @default(now())
-  isPrimary      Boolean        @default(false)
+  id        String         @id @default(cuid())
+  story     Story          @relation(fields: [storyId], references: [id])
+  storyId   String
+  element   MyWorldElement @relation(fields: [elementId], references: [id], onDelete: Cascade)
+  elementId String
+  createdAt DateTime       @default(now())
+  isPrimary Boolean        @default(false)
 
   @@unique([storyId, elementId])
 }
