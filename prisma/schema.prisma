@@ -184,6 +184,7 @@ model MyWorldElement {
   petAttributes       PetAttributes?
   objectAttributes    ObjectAttributes?
   locationAttributes  LocationAttributes?
+  isPrimary           Boolean              @default(false)
 
   @@index([userId, category]) // Index for faster lookups
   @@index([tempId]) // index to find guest elements by session

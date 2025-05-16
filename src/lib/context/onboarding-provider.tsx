@@ -26,7 +26,10 @@ interface OnboardingState {
     visualStyle?: VisualStyle;
     themePrompt: string;
     themeSuggestions: { title: string; text: string; imageUrl?: string }[];
+    togglePrimaryElement: (id: string) => void; // Add this
     currentStep: number;
+    // New: Add primaryCharacterId
+    primaryCharacterId: string | null;
     // Loading/generation flags
     isLoadingSuggestions: boolean;
     isAnalyzingImage: boolean;
@@ -48,6 +51,7 @@ interface OnboardingState {
     updateElementDescription: (id: string, description: string) => void;
     setVisualStyle: (style: VisualStyle) => void;
     setThemePrompt: (prompt: string) => void;
+    setPrimaryCharacterId: (id: string | null) => void; // New: Add this function
     generateThemeSuggestions: () => Promise<void>;
     createStory: () => Promise<{ id: string; status: string } | undefined>;
     goToNextStep: () => void;
@@ -131,6 +135,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     const [themePrompt, _setThemePrompt] = useState<string>('');
     const [themeSuggestions, setThemeSuggestions] = useState<Array<{ title: string; text: string; imageUrl?: string }>>([]);
     const [currentStep, _setCurrentStep] = useState<number>(0);
+    const [primaryCharacterId, _setPrimaryCharacterId] = useState<string | null>(null); // New: Add state for primaryCharacterId
 
     // Loading flags
     const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
@@ -188,6 +193,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 if (data.themePrompt) _setThemePrompt(data.themePrompt);
                 if (data.themeSuggestions) setThemeSuggestions(data.themeSuggestions);
                 if (data.currentStep !== undefined) _setCurrentStep(data.currentStep);
+                if (data.primaryCharacterId !== undefined) _setPrimaryCharacterId(data.primaryCharacterId); // New: Load primaryCharacterId
             }
         } catch (err) {
             console.warn('Failed to parse saved onboarding data:', err);
@@ -207,6 +213,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                     themePrompt,
                     themeSuggestions,
                     currentStep,
+                    primaryCharacterId, // New: Add primaryCharacterId
                 };
                 try {
                     localStorage.setItem('magicstory_onboarding', JSON.stringify(data));
@@ -222,7 +229,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 // The debounce function handles its own cleanup
             };
         }
-    }, [storyGoal, tone, selectedElements, uploadedElements, visualStyle, themePrompt, themeSuggestions, currentStep, userId]);
+    }, [storyGoal, tone, selectedElements, uploadedElements, visualStyle, themePrompt, themeSuggestions, currentStep, primaryCharacterId, userId]); // Add primaryCharacterId to dependencies
 
     // Context action: set story goal
     const setStoryGoal = useCallback((goals: string[]) => {
@@ -236,6 +243,13 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         _setTone(tones);
         saveOnboardingPrefs({ tone: tones });
     }, [tone, saveOnboardingPrefs]);
+
+    // Set primary character ID
+    const setPrimaryCharacterId = useCallback((id: string | null) => {
+        _setPrimaryCharacterId(id);
+        // You can save this to database if needed
+        // saveOnboardingPrefs({ primaryCharacterId: id });
+    }, []);
 
     // Add a MyWorld element to the selected list
     const addElement = useCallback((element: MyWorldElement) => {
@@ -317,6 +331,24 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         });
     }, [saveOnboardingPrefs]);
 
+    // Toggle primary status of an element
+    const togglePrimaryElement = useCallback((id: string) => {
+        setSelectedElements(curr =>
+            curr.map(el => ({
+                ...el,
+                isPrimary: el.id === id // Make the selected one primary, all others not primary
+            }))
+        );
+
+        // Update the primaryCharacterId state
+        _setPrimaryCharacterId(id);
+
+        // Also update in uploadedElements list if needed
+        setUploadedElements(curr =>
+            curr.map(el => el.id === id ? { ...el, isPrimary: true } : { ...el, isPrimary: false })
+        );
+    }, []);
+
     // Upload a new image (character/pet/location/object) and analyze it via AI
     const addUploadedImage = async (file: File, category: ElementCategory = 'CHARACTER') => {
         setIsAnalyzingImage(true);
@@ -354,6 +386,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 publicId: data.public_id,
                 isDetectedInStory: false,
                 isDefault: false,
+                isPrimary: false,
                 userId: userId || null,
                 tempId: userId ? null : tempId,
                 createdAt: new Date(),
@@ -418,22 +451,30 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 // For guest users, generate client-side suggestions based on the style
                 // This helps avoid authentication errors with the API
                 const visualStyleName = visualStyle.name;
+
+                // Look for a primary character
+                const primaryChar = selectedElements.find(el => el.id === primaryCharacterId);
+                const mainCharacterName = primaryChar?.name ||
+                    (selectedElements.length > 0 ?
+                        selectedElements.filter(el => el.category === 'CHARACTER')[0]?.name || 'our hero' :
+                        'our hero');
+
                 const suggestions = [
                     {
                         title: "Adventure",
-                        text: `An exciting ${visualStyleName} adventure that sparks imagination.`
+                        text: `An exciting ${visualStyleName} adventure where ${mainCharacterName} discovers hidden treasures.`
                     },
                     {
                         title: "Friendship",
-                        text: `A heartwarming ${visualStyleName} tale about friendship and teamwork.`
+                        text: `A heartwarming ${visualStyleName} tale about ${mainCharacterName} making new friends.`
                     },
                     {
                         title: "Discovery",
-                        text: `A curious ${visualStyleName} journey full of discoveries and surprises.`
+                        text: `A curious ${visualStyleName} journey where ${mainCharacterName} explores new wonders.`
                     },
                     {
                         title: "Magic",
-                        text: `A magical ${visualStyleName} story where wonderful things happen.`
+                        text: `A magical ${visualStyleName} story where ${mainCharacterName} experiences wonderful surprises.`
                     }
                 ];
 
@@ -450,19 +491,28 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 body: JSON.stringify({
                     selectedElements,
                     visualStyle,
-                    tone // include tone to tailor suggestions
+                    tone,
+                    primaryCharacterId // Pass primaryCharacterId to API
                 }),
             });
 
-            if (!res.ok) throw new Error('Failed to fetch theme suggestions');
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                const errorMessage = errorData.error || `Failed to fetch theme suggestions: ${res.status}`;
+                throw new Error(errorMessage);
+            }
 
             const { suggestions } = await res.json();
             setThemeSuggestions(suggestions || []);
         } catch (error) {
             console.error('Error getting theme suggestions:', error);
             // Provide some fallback suggestions
+            const mainCharacterName = selectedElements.length > 0 ?
+                selectedElements.filter(el => el.category === 'CHARACTER')[0]?.name || 'our hero' :
+                'our hero';
+
             setThemeSuggestions([
-                { title: "Adventure", text: `An exciting ${visualStyle.name} adventure that sparks imagination.` },
+                { title: "Adventure", text: `An exciting ${visualStyle.name} adventure with ${mainCharacterName}.` },
                 { title: "Friendship", text: `A heartwarming ${visualStyle.name} tale about friendship and teamwork.` },
                 { title: "Discovery", text: `A curious ${visualStyle.name} journey full of discoveries and surprises.` }
             ]);
@@ -473,7 +523,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         } finally {
             setIsLoadingSuggestions(false);
         }
-    }, [visualStyle, selectedElements, tone, userId]);
+    }, [visualStyle, selectedElements, tone, userId, primaryCharacterId]); // Add primaryCharacterId to dependencies
 
     // Create/generate the story based on current selections
     const createStory = useCallback(async (): Promise<{ id: string; status: string } | undefined> => {
@@ -592,6 +642,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         themePrompt,
         themeSuggestions,
         currentStep,
+        primaryCharacterId, // NEW: Add to context value
         isLoadingSuggestions,
         isAnalyzingImage,
         isGeneratingStory,
@@ -601,6 +652,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         generationError,
         setGeneratedStoryId,
         setGenerationError,
+        togglePrimaryElement,
         setStoryGoal,
         setTone,
         addElement,
@@ -611,6 +663,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         updateElementDescription,
         setVisualStyle,
         setThemePrompt,
+        setPrimaryCharacterId, // NEW: Add to context value
         generateThemeSuggestions,
         createStory,
         goToNextStep,
