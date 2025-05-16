@@ -31,6 +31,7 @@ interface CharacterAttributes {
 }
 
 export function CharactersStep() {
+    console.log("CharacterStep rendering");
     const { userId } = useAuth();
     const {
         selectedElements,
@@ -40,9 +41,7 @@ export function CharactersStep() {
         goToNextStep,
         updateElementName,
         updateElementDescription,
-        addElement,
-        primaryCharacterId,
-        setPrimaryCharacter
+        addElement
     } = useOnboarding();
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,6 +55,7 @@ export function CharactersStep() {
 
     // Selected character tracking (max 3)
     const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
+    const [primaryCharacterId, setPrimaryCharacterId] = useState<string | null>(null);
 
     // State for attributes editor
     const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -116,59 +116,102 @@ export function CharactersStep() {
     // Load existing My World elements on component mount
     useEffect(() => {
         const loadMyWorldElements = async () => {
+            console.log("Loading my world elements...");
             setIsLoading(true);
 
             try {
-                // Check for existing characters in selectedElements first
-                const existingCharacters = selectedElements.filter(el =>
+                // Check for existing characters in uploadedElements first
+                const existingCharacters = uploadedElements.filter(el =>
                     el.category === 'CHARACTER' ||
                     el.category === 'PET' ||
                     el.category === 'OBJECT'
                 );
 
+                console.log("Existing characters from uploadedElements:", existingCharacters);
+
                 // If we already have characters in context, use those
                 if (existingCharacters.length > 0) {
                     console.log('Found existing characters:', existingCharacters);
+
+                    // Store in local state too
+                    setLocalCharacters(existingCharacters);
 
                     // Add existing characters to selected elements if not already there
                     existingCharacters.forEach(character => {
                         addElement(character);
                     });
 
-                    // Store in local state too
-                    setLocalCharacters(existingCharacters);
-
                     animateText("Welcome back! Your cast of characters is ready for a new adventure!");
+
+                    // Set first character as primary if none is set
+                    if (existingCharacters.length > 0 && !primaryCharacterId) {
+                        setPrimaryCharacterId(existingCharacters[0].id);
+                        console.log("Set primary character:", existingCharacters[0].id);
+                    }
 
                     // Initialize selected characters
                     const initialSelected = existingCharacters.slice(0, MAX_CHARACTERS).map(c => c.id);
                     setSelectedCharacters(initialSelected);
+                    console.log("Set selected characters:", initialSelected);
+                } else if (userId) {
+                    console.log("Fetching characters from API for user:", userId);
+                    // Only fetch from API if user is logged in and we don't have characters
+                    const response = await fetch('/api/my-world/elements?categories=CHARACTER,PET,OBJECT');
+                    if (response.ok) {
+                        const { elements } = await response.json();
+                        console.log("API returned elements:", elements);
 
-                    // Find and set primary character if it exists
-                    const primary = existingCharacters.find(c => c.isPrimary === true);
-                    if (primary) {
-                        // Use the context's setPrimaryCharacter instead of local state
-                        setPrimaryCharacter(primary.id);
-                    } else if (initialSelected.length > 0 && !primaryCharacterId) {
-                        // Set first character as primary if none is set
-                        setPrimaryCharacter(initialSelected[0]);
+                        if (elements && elements.length > 0) {
+                            console.log('Loaded characters from API:', elements);
+
+                            // Add these elements to the selected elements
+                            elements.forEach((element: any) => {
+                                addElement(element);
+                            });
+
+                            // Store in local state too
+                            setLocalCharacters(elements);
+
+                            // Set first character as primary if none is set
+                            if (elements.length > 0 && !primaryCharacterId) {
+                                setPrimaryCharacterId(elements[0].id);
+                                console.log("Set primary character:", elements[0].id);
+                            }
+
+                            // Initialize selected characters
+                            const initialSelected = elements.slice(0, MAX_CHARACTERS).map((e: any) => e.id);
+                            setSelectedCharacters(initialSelected);
+                            console.log("Set selected characters:", initialSelected);
+
+                            animateText("Welcome back! Who should star in today's story?");
+                        } else {
+                            animateText(baseText);
+                        }
+                    } else {
+                        console.log("API returned error");
+                        animateText(baseText);
                     }
+                } else {
+                    console.log("No user ID and no existing characters");
+                    // For guest users with no existing characters
+                    animateText(baseText);
                 }
-                // Rest of your existing function...
             } catch (error) {
                 console.error('Error loading My World elements:', error);
                 animateText(baseText);
             } finally {
                 setIsLoading(false);
+                console.log("Finished loading characters");
             }
         };
 
         if (isFirstEntryRef.current) {
+            console.log("First entry, loading characters...");
             animateText(loadingText);
             loadMyWorldElements();
             isFirstEntryRef.current = false;
         }
-    }, [addElement, uploadedElements, selectedElements, userId, primaryCharacterId, setPrimaryCharacter]);
+    }, [addElement, uploadedElements, userId, primaryCharacterId]);
 
     // Update text and UI when analyzing image
     useEffect(() => {
@@ -192,46 +235,23 @@ export function CharactersStep() {
         }
     }, [selectedCharacters]);
 
+    // Track whenever the primary character changes
+    useEffect(() => {
+        console.log("Primary character ID changed:", primaryCharacterId);
+    }, [primaryCharacterId]);
+
     // Toggle character selection
-    const handleSetPrimaryCharacter = (characterId: string) => {
-        // Toggle primary status
-        if (characterId === primaryCharacterId) {
-            setPrimaryCharacter(null);
-            return;
-        }
-
-        // Find the character by ID
-        const character = selectedElements.find(el => el.id === characterId) ||
-            localCharacters.find(el => el.id === characterId);
-
-        const characterName = character ? character.name : "This character";
-
-        // Set new primary using context function
-        setPrimaryCharacter(characterId);
-
-        // Ensure the primary character is selected
-        if (!selectedCharacters.includes(characterId)) {
-            // If we're at max capacity, remove the last selected character
-            if (selectedCharacters.length >= MAX_CHARACTERS) {
-                const charactersToKeep = selectedCharacters.slice(0, MAX_CHARACTERS - 1);
-                setSelectedCharacters([...charactersToKeep, characterId]);
-            } else {
-                setSelectedCharacters([...selectedCharacters, characterId]);
-            }
-        }
-
-        animateText(getSpeechForPrimaryChange(characterName));
-    };
-
-// Update the toggleCharacterSelection function to use the primary character from context
     const toggleCharacterSelection = (characterId: string) => {
+        console.log("Toggle selection for:", characterId);
         if (selectedCharacters.includes(characterId)) {
             // Remove from selection (allow unselection of primary character)
             setSelectedCharacters(selectedCharacters.filter(id => id !== characterId));
+            console.log("Removed from selected characters");
 
             // If this was the primary character, clear primary status
             if (characterId === primaryCharacterId) {
-                setPrimaryCharacter(null);
+                setPrimaryCharacterId(null);
+                console.log("Cleared primary character");
             }
         } else {
             // Check if we've reached the max before adding
@@ -244,9 +264,44 @@ export function CharactersStep() {
 
             // Add to selection
             setSelectedCharacters([...selectedCharacters, characterId]);
+            console.log("Added to selected characters");
         }
     };
 
+    // Set primary character
+    const setPrimaryCharacter = (characterId: string) => {
+        console.log("Setting primary character:", characterId);
+        // Toggle primary status
+        if (characterId === primaryCharacterId) {
+            setPrimaryCharacterId(null);
+            console.log("Cleared primary character");
+            return;
+        }
+
+        // Find the character by ID
+        const character = selectedElements.find(el => el.id === characterId) ||
+            localCharacters.find(el => el.id === characterId);
+
+        const characterName = character ? character.name : "This character";
+        console.log("Found character:", characterName);
+
+        // Set new primary
+        setPrimaryCharacterId(characterId);
+
+        // Ensure the primary character is selected
+        if (!selectedCharacters.includes(characterId)) {
+            console.log("Adding primary character to selections");
+            // If we're at max capacity, remove the last selected character
+            if (selectedCharacters.length >= MAX_CHARACTERS) {
+                const charactersToKeep = selectedCharacters.slice(0, MAX_CHARACTERS - 1);
+                setSelectedCharacters([...charactersToKeep, characterId]);
+            } else {
+                setSelectedCharacters([...selectedCharacters, characterId]);
+            }
+        }
+
+        animateText(getSpeechForPrimaryChange(characterName));
+    };
 
     // Handle file selection trigger
     const triggerFileSelect = () => {
@@ -310,7 +365,8 @@ export function CharactersStep() {
 
                 // Set as primary character if it's the first one
                 if (!primaryCharacterId) {
-                    handleSetPrimaryCharacter(newElement.id);
+                    setPrimaryCharacterId(newElement.id);
+                    console.log("Set primary character (new upload):", newElement.id);
                 }
 
                 // Add to pending characters instead of selected characters immediately
@@ -394,6 +450,7 @@ export function CharactersStep() {
                         }
                         return [...prev, currentElementId];
                     });
+                    console.log("Moved from pending to selected characters");
                 }
 
                 // Update the displayed text to confirm success
@@ -532,6 +589,7 @@ export function CharactersStep() {
         // Filter out any characters that are still pending
         characters = characters.filter(char => !pendingCharacters.includes(char.id));
 
+        console.log(`Characters for display: ${characters.length}`);
         return characters;
     };
 
@@ -597,8 +655,64 @@ export function CharactersStep() {
                     }
                     return [...prev, currentElementId];
                 });
+                console.log("Moved from pending to selected on editor close");
             }
         }
+    };
+
+    // Let's save the selected characters and primary character to localStorage
+    // This is a minimal addition to ensure selections persist
+    useEffect(() => {
+        if (!userId) { // Only for guest users
+            try {
+                localStorage.setItem('magicstory_selected_characters', JSON.stringify({
+                    selectedCharacters,
+                    primaryCharacterId
+                }));
+                console.log("Saved selections to localStorage:", selectedCharacters);
+            } catch (err) {
+                console.error("Failed to save selections:", err);
+            }
+        }
+    }, [selectedCharacters, primaryCharacterId, userId]);
+
+    // Load saved selections on first load
+    useEffect(() => {
+        if (!userId && isFirstEntryRef.current) {
+            try {
+                const savedSelections = localStorage.getItem('magicstory_selected_characters');
+                if (savedSelections) {
+                    const data = JSON.parse(savedSelections);
+                    if (data.selectedCharacters?.length > 0) {
+                        setSelectedCharacters(data.selectedCharacters);
+                        console.log("Loaded saved selections:", data.selectedCharacters);
+                    }
+                    if (data.primaryCharacterId) {
+                        setPrimaryCharacterId(data.primaryCharacterId);
+                        console.log("Loaded saved primary character:", data.primaryCharacterId);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load saved selections:", err);
+            }
+        }
+    }, [userId]);
+
+    // Store primaryCharacterId in the story creation process
+    const handleContinue = () => {
+        // First save the primary character to localStorage
+        // This ensures it's available for story creation
+        if (primaryCharacterId) {
+            try {
+                localStorage.setItem('magicstory_primary_character', primaryCharacterId);
+                console.log("Saved primary character for story:", primaryCharacterId);
+            } catch (err) {
+                console.error("Failed to save primary character for story:", err);
+            }
+        }
+
+        // Then proceed to next step
+        goToNextStep();
     };
 
     return (
@@ -873,7 +987,7 @@ export function CharactersStep() {
                 transition={{ delay: 0.5, duration: 0.5 }}
             >
                 <Button
-                    onClick={goToNextStep}
+                    onClick={handleContinue}
                     disabled={!canProceed || isAnalyzingImage || isLoading || showAnalyzingUI || pendingCharacters.length > 0}
                     className={`w-full py-6 text-lg font-medium rounded-full ${
                         canProceed && !showAnalyzingUI && pendingCharacters.length === 0
@@ -907,7 +1021,8 @@ export function CharactersStep() {
                     onSetPrimary={setPrimaryCharacter}
                     description={currentElement.description || ''}
                     showToasts={false} // Don't show toasts in the component
-                    onDescriptionChange={handleDescriptionChange as (description: string) => Promise<void>}                />
+                    onDescriptionChange={handleDescriptionChange as (description: string) => Promise<void>}
+                />
             )}
         </div>
     );

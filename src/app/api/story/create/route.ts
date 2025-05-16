@@ -708,11 +708,16 @@ export async function POST(req: NextRequest) {
             });
 
             if (elements.length > 0) {
-                const storyElements = elements.map(element => ({
-                    storyId: story.id,
-                    elementId: element.id,
-                    isPrimary: primaryCharacterId ? element.id === primaryCharacterId : false
-                }));
+                const storyElements = elements.map(element => {
+                    // Explicitly convert to boolean
+                    const isPrimary = Boolean(primaryCharacterId && element.id === primaryCharacterId);
+
+                    return {
+                        storyId: story.id,
+                        elementId: element.id,
+                        isPrimary: isPrimary // This will always be a boolean (true or false)
+                    };
+                });
 
                 await prisma.storyElement.createMany({
                     data: storyElements

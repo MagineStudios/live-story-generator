@@ -37,11 +37,20 @@ export async function POST(req: NextRequest) {
             primaryCharacterId?: string | null;
         };
 
+        console.log(body);
+
+        // Get these variables defined FIRST - this fixes the reference error
         const selectedElements = body.selectedElements ?? [];
         const visualStyle = body.visualStyle;
         const visualStyleName = visualStyle?.name ?? 'unknown style';
         const tone = body.tone || [];
         const primaryCharacterId = body.primaryCharacterId;
+
+        // NOW you can safely use selectedElements in the primaryCharacter search
+        const primaryCharacter = selectedElements.find(el =>
+            (primaryCharacterId && el.id === primaryCharacterId) ||
+            el.isPrimary === true
+        );
 
         if (!visualStyle) {
             return NextResponse.json({ error: 'Missing visual style' }, { status: 400 });
@@ -76,12 +85,6 @@ export async function POST(req: NextRequest) {
         const pets = selectedElements.filter(el => el.category === ElementCategory.PET);
         const locations = selectedElements.filter(el => el.category === ElementCategory.LOCATION);
         const objects = selectedElements.filter(el => el.category === ElementCategory.OBJECT);
-
-        // Find the primary character if specified
-        const primaryCharacter = selectedElements.find(el =>
-            (primaryCharacterId && el.id === primaryCharacterId) ||
-            el.isPrimary === true
-        );
 
         // Create a prompt based on the selected elements and style
         let prompt = `Generate 4 creative, diverse story ideas for a children's book in ${visualStyleName} style.`;
