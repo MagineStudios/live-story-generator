@@ -4,9 +4,20 @@ import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { ElementCategory } from '@prisma/client';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy initialization of OpenAI client
+let openai: OpenAI | null = null;
+
+function getOpenAIClient() {
+    if (!openai) {
+        if (!process.env.OPENAI_API_KEY) {
+            throw new Error('OPENAI_API_KEY is not configured');
+        }
+        openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+        });
+    }
+    return openai;
+}
 
 export async function POST(req: NextRequest, context: any) {
     const { storyId, pageId } = (context.params as { storyId: string; pageId: string });
@@ -44,7 +55,7 @@ export async function POST(req: NextRequest, context: any) {
 
         // Get description from GPT Vision API
         const imageUrl = page.chosenImage.secureUrl;
-        const response = await openai.chat.completions.create({
+        const response = await getOpenAIClient().chat.completions.create({
             model: "gpt-4.1",
             messages: [
                 {
