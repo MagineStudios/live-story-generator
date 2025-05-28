@@ -53,11 +53,47 @@ export default function Review() {
     const [pollingError, setPollingError] = useState<string | null>(null);
     const [displayedText, setDisplayedText] = useState('');
     const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+    const [currentJokeIndex, setCurrentJokeIndex] = useState(-1);
     const { generatedStoryId, goToNextStep } = useOnboarding();
     const pollingStartTime = useRef<number | null>(null);
     const pollingInterval = useRef<NodeJS.Timeout | null>(null);
     const generationStartedRef = useRef(false);
     const animationRef = useRef<NodeJS.Timeout | null>(null);
+    const jokeIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Collection of kid-friendly jokes for waiting time
+    const waitingJokes = [
+        "Why don't scientists trust atoms? Because they make up everything! 😄",
+        "What do you call a bear with no teeth? A gummy bear! 🐻",
+        "Knock knock! Who's there? Boo. Boo who? Don't cry, it's just a joke! 😢",
+        "What's orange and sounds like a parrot? A carrot! 🥕",
+        "Why did the scarecrow win an award? He was outstanding in his field! 🌾",
+        "What do you call cheese that isn't yours? Nacho cheese! 🧀",
+        "Why don't eggs tell jokes? They'd crack up! 🥚",
+        "What has hands but can't clap? A clock! 🕐",
+        "Why did the math book look so sad? It had too many problems! 📚",
+        "What do clouds wear under their raincoats? Thunderwear! ⛈️",
+        "Knock knock! Who's there? Lettuce. Lettuce who? Lettuce in, it's cold! 🥬",
+        "What do you call a fake noodle? An impasta! 🍝",
+        "Why did the teddy bear say no to dessert? She was stuffed! 🧸",
+        "What did the big flower say to the little flower? Hi, bud! 🌻",
+        "Why do bees have sticky hair? They use honeycombs! 🐝",
+        "What gets wetter the more it dries? A towel! 🧺",
+        "Why did the student eat his homework? The teacher said it was a piece of cake! 🎂",
+        "What's the best thing about Switzerland? The flag is a big plus! 🇨🇭",
+        "Knock knock! Who's there? Cow says. Cow says who? No, cow says moo! 🐄",
+        "What did one wall say to the other wall? I'll meet you at the corner! 🏠",
+        "Why did the picture go to jail? It was framed! 🖼️",
+        "What has four wheels and flies? A garbage truck! 🚛",
+        "Why did the banana go to the doctor? It wasn't peeling well! 🍌",
+        "What's a pirate's favorite letter? You'd think it's R, but it's the C! 🏴‍☠️",
+        "Why did the computer go to the doctor? It had a virus! 💻",
+        "What room has no doors or windows? A mushroom! 🍄",
+        "Why did the golfer bring two pairs of pants? In case he got a hole in one! ⛳",
+        "What do you call a factory that makes good products? A satisfactory! 🏭",
+        "Knock knock! Who's there? Tank. Tank who? You're welcome! 😊",
+        "What did the ocean say to the beach? Nothing, it just waved! 🌊"
+    ];
 
     // Animate text helper
     const animateText = (text: string) => {
@@ -82,7 +118,8 @@ export default function Review() {
     // Dynamic speech messages
     const getSpeechMessage = () => {
         if (isLoading) return "Getting your story ready... This is going to be amazing! ✨";
-        if (isPolling) return "Creating magical illustrations for your story... 🎨";
+        if (isPolling && currentJokeIndex >= 0) return waitingJokes[currentJokeIndex]; // Show jokes while generating
+        if (isPolling && currentJokeIndex < 0) return "Let me entertain you with jokes while we wait! 🎭";
         if (pollingError) return "Oops! Something went wrong, but don't worry - we can fix this! 🔧";
         if (showSuccessAnimation) return "Fantastic! All your illustrations are ready! 🌟";
         if (currentStoryPage?.imageStatus === 'error') return "This image had a hiccup. Click retry to give it another go! 💪";
@@ -122,8 +159,48 @@ export default function Review() {
     // Update speech bubble text
     useEffect(() => {
         animateText(getSpeechMessage());
-    }, [isLoading, isPolling, pollingError, showSuccessAnimation, currentPage, storyPages]);
+    }, [isLoading, isPolling, pollingError, showSuccessAnimation, currentPage, storyPages, currentJokeIndex, totalPages, completedPages]);
 
+    // Rotate through jokes while polling
+    useEffect(() => {
+        if (isPolling) {
+            // Reset joke index to trigger intro message
+            setCurrentJokeIndex(-1);
+            
+            // Start joke rotation after intro (3 seconds)
+            const startJokes = setTimeout(() => {
+                const randomStart = Math.floor(Math.random() * waitingJokes.length);
+                setCurrentJokeIndex(randomStart);
+                
+                // Set up rotation every 8 seconds (gives plenty of time to read)
+                jokeIntervalRef.current = setInterval(() => {
+                    setCurrentJokeIndex(prev => {
+                        // Get a random joke that's different from the current one
+                        let nextIndex;
+                        do {
+                            nextIndex = Math.floor(Math.random() * waitingJokes.length);
+                        } while (nextIndex === prev && waitingJokes.length > 1);
+                        return nextIndex;
+                    });
+                }, 8000);
+            }, 3000);
+            
+            return () => {
+                clearTimeout(startJokes);
+                if (jokeIntervalRef.current) {
+                    clearInterval(jokeIntervalRef.current);
+                    jokeIntervalRef.current = null;
+                }
+            };
+        } else {
+            // Clear interval when not polling
+            if (jokeIntervalRef.current) {
+                clearInterval(jokeIntervalRef.current);
+                jokeIntervalRef.current = null;
+            }
+            setCurrentJokeIndex(-1);
+        }
+    }, [isPolling, waitingJokes.length]);
     // Preload next image for smoother transitions
     useEffect(() => {
         if (currentPage < storyPages.length - 1) {
@@ -143,6 +220,9 @@ export default function Review() {
             }
             if (animationRef.current) {
                 clearInterval(animationRef.current);
+            }
+            if (jokeIntervalRef.current) {
+                clearInterval(jokeIntervalRef.current);
             }
         };
     }, []);
@@ -362,6 +442,7 @@ export default function Review() {
             pollingInterval.current = null;
         }
         setIsPolling(false);
+        setCurrentJokeIndex(-1); // Reset joke index
         if (error) {
             setPollingError(error);
         }
@@ -654,7 +735,7 @@ export default function Review() {
             {/* Fixed height header section */}
             <div className="flex-shrink-0">
                 {/* Speech Bubble Section - Flexible height with minimum constraint */}
-                <div className="px-6 pt-6 pb-4 min-h-[165px]">
+                <div className="px-6 pt-6 pb-4 min-h-[160px]">
                     <SpeechBubble
                         message={displayedText}
                         animateIn={true}
@@ -714,7 +795,7 @@ export default function Review() {
                                                 <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-ping" />
                                             </div>
                                             <span className="text-sm font-medium text-gray-700">
-                                                Creating magical illustrations...
+                                                While we draw, here's a joke! 😊
                                             </span>
                                         </div>
                                         <Badge 
@@ -735,7 +816,7 @@ export default function Review() {
                                     </div>
                                     <p className="text-xs text-gray-600 mt-2 flex items-center gap-1">
                                         <Zap className="w-3 h-3" />
-                                        Lightning fast generation - up to 5 images at once!
+                                        Creating all your images at once - super fast! 🚀
                                     </p>
                                 </div>
                             </motion.div>
