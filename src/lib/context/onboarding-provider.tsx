@@ -30,7 +30,8 @@ interface OnboardingState {
     currentStep: number;
     // New: Add primaryCharacterId
     primaryCharacterId: string | null;
-    // Loading/generation flags
+    // Loading states
+    isInitializing: boolean; // New: Add initial loading state
     isLoadingSuggestions: boolean;
     isAnalyzingImage: boolean;
     isGeneratingStory: boolean;
@@ -56,6 +57,7 @@ interface OnboardingState {
     createStory: () => Promise<{ id: string; status: string } | undefined>;
     goToNextStep: () => void;
     goToPrevStep: () => void;
+    goToStep: (step: number) => void; // New: Add direct step navigation
     // Error handling
     setGenerationError: (error: string | null) => void;
 }
@@ -111,7 +113,19 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     // Load onboarding data for logged in users
     useEffect(() => {
-        if (!userId) return;
+        if (!userId) {
+            // Check URL for step parameter on initial load
+            const urlParams = new URLSearchParams(window.location.search);
+            const stepParam = urlParams.get('step');
+            if (stepParam) {
+                const step = parseInt(stepParam, 10);
+                if (!isNaN(step) && step >= 0 && step < MAX_STEPS) {
+                    _setCurrentStep(step);
+                }
+            }
+            setIsInitializing(false); // No user, no need to load from server
+            return;
+        }
         (async () => {
             try {
                 const res = await fetch('/api/onboarding/fetch');
@@ -119,9 +133,22 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 const data = await res.json();
                 if (data.storyGoal) _setStoryGoal(data.storyGoal);
                 if (data.tone) _setTone(data.tone);
-                if (data.currentStep !== undefined) _setCurrentStep(data.currentStep);
+                
+                // Check URL for step parameter, but prefer saved step
+                const urlParams = new URLSearchParams(window.location.search);
+                const stepParam = urlParams.get('step');
+                if (data.currentStep !== undefined) {
+                    _setCurrentStep(data.currentStep);
+                } else if (stepParam) {
+                    const step = parseInt(stepParam, 10);
+                    if (!isNaN(step) && step >= 0 && step < MAX_STEPS) {
+                        _setCurrentStep(step);
+                    }
+                }
             } catch (err) {
                 console.error('Onboarding fetch error:', err);
+            } finally {
+                setIsInitializing(false);
             }
         })();
     }, [userId]);
@@ -136,6 +163,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     const [themeSuggestions, setThemeSuggestions] = useState<Array<{ title: string; text: string; imageUrl?: string }>>([]);
     const [currentStep, _setCurrentStep] = useState<number>(0);
     const [primaryCharacterId, _setPrimaryCharacterId] = useState<string | null>(null); // New: Add state for primaryCharacterId
+    const [isInitializing, setIsInitializing] = useState(true); // New: Loading state
 
     // Loading flags
     const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
@@ -192,11 +220,17 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 if (data.visualStyle) _setVisualStyle(data.visualStyle);
                 if (data.themePrompt) _setThemePrompt(data.themePrompt);
                 if (data.themeSuggestions) setThemeSuggestions(data.themeSuggestions);
-                if (data.currentStep !== undefined) _setCurrentStep(data.currentStep);
+                if (data.currentStep !== undefined) {
+                    // Validate step is within bounds
+                    const step = Math.max(0, Math.min(data.currentStep, MAX_STEPS - 1));
+                    _setCurrentStep(step);
+                }
                 if (data.primaryCharacterId !== undefined) _setPrimaryCharacterId(data.primaryCharacterId); // New: Load primaryCharacterId
             }
         } catch (err) {
             console.warn('Failed to parse saved onboarding data:', err);
+        } finally {
+            if (!userId) setIsInitializing(false); // Done loading for guest users
         }
     }, [userId]);
 
@@ -315,21 +349,99 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         _setCurrentStep(curr => {
             const next = Math.min(curr + 1, MAX_STEPS - 1);
             if (next !== curr) {
-                saveOnboardingPrefs({ currentStep: next });
+                // Update URL with pushState for forward navigation
+                const url = new URL(window.location.href);
+                url.searchParams.set('step', next.toString());
+                window.history.pushState({ step: next }, '', url.toString());
+                
+                // Save immediately without debouncing for step changes
+                if (userId) {
+                    fetch('/api/onboarding/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ currentStep: next }),
+                    }).catch(console.error);
+                }
             }
             return next;
         });
-    }, [saveOnboardingPrefs]);
+    }, [userId]);
 
     const goToPrevStep = useCallback(() => {
-        _setCurrentStep(curr => {
-            const prev = Math.max(curr - 1, 0);
-            if (prev !== curr) {
-                saveOnboardingPrefs({ currentStep: prev });
+        // Use browser back for better history management
+        if (window.history.length > 1) {
+            window.history.back();
+        } else {
+            _setCurrentStep(curr => {
+                const prev = Math.max(curr - 1, 0);
+                if (prev !== curr) {
+                    // Update URL
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('step', prev.toString());
+                    window.history.replaceState({ step: prev }, '', url.toString());
+                    
+                    // Save immediately without debouncing for step changes
+                    if (userId) {
+                        fetch('/api/onboarding/save', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ currentStep: prev }),
+                        }).catch(console.error);
+                    }
+                }
+                return prev;
+            });
+        }
+    }, [userId]);
+
+    // New: Direct step navigation
+    const goToStep = useCallback((step: number) => {
+        const validStep = Math.max(0, Math.min(step, MAX_STEPS - 1));
+        if (validStep !== currentStep) {
+            _setCurrentStep(validStep);
+            // Save immediately without debouncing for step changes
+            if (userId) {
+                fetch('/api/onboarding/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ currentStep: validStep }),
+                }).catch(console.error);
             }
-            return prev;
-        });
-    }, [saveOnboardingPrefs]);
+        }
+    }, [currentStep, userId]);
+
+    // Browser history management
+    useEffect(() => {
+        // Only update URL if it doesn't already have the correct step
+        const currentUrl = new URL(window.location.href);
+        const currentStepParam = currentUrl.searchParams.get('step');
+        if (currentStepParam !== currentStep.toString()) {
+            currentUrl.searchParams.set('step', currentStep.toString());
+            // Use replaceState to avoid creating duplicate entries
+            window.history.replaceState({ step: currentStep }, '', currentUrl.toString());
+        }
+
+        // Handle browser back/forward navigation
+        const handlePopState = (event: PopStateEvent) => {
+            const state = event.state;
+            if (state && typeof state.step === 'number') {
+                goToStep(state.step);
+            } else {
+                // Try to get step from URL if state is missing
+                const urlParams = new URLSearchParams(window.location.search);
+                const stepParam = urlParams.get('step');
+                if (stepParam) {
+                    const step = parseInt(stepParam, 10);
+                    if (!isNaN(step)) {
+                        goToStep(step);
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [currentStep, goToStep]);
 
     // Toggle primary status of an element
     const togglePrimaryElement = useCallback((id: string) => {
@@ -643,6 +755,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         themeSuggestions,
         currentStep,
         primaryCharacterId, // NEW: Add to context value
+        isInitializing, // NEW: Add loading state
         isLoadingSuggestions,
         isAnalyzingImage,
         isGeneratingStory,
@@ -668,6 +781,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         createStory,
         goToNextStep,
         goToPrevStep,
+        goToStep, // NEW: Add direct navigation
     };
 
     // **Migration after signup**: if the user has just signed up (userId now exists), we have guest data, and a story has been generated, trigger migration.

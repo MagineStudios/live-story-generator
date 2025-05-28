@@ -15,10 +15,11 @@ import { GeneratingStep } from './steps/generating-step';
 import { ReviewStep } from './steps/review-step';
 import { FinishStep } from './steps/finish-step';
 import { Button } from '@/components/ui/button';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export function OnboardingWizard() {
-    const { currentStep, goToPrevStep, isGeneratingStory } = useOnboarding();
+    const { currentStep, goToPrevStep, isGeneratingStory, isInitializing } = useOnboarding();
 
     // Scroll to top of page whenever step changes
     useEffect(() => {
@@ -35,6 +36,15 @@ export function OnboardingWizard() {
 
     // Hide progress bar for welcome screen
     const showProgressBar = currentStep > 0;
+
+    // Show loading state while initializing (moved after all hooks)
+    if (isInitializing) {
+        return (
+            <div className="relative w-full max-w-md mx-auto min-h-screen flex items-center justify-center bg-white font-nunito">
+                <LoadingSpinner size="md" message="Loading your progress..." />
+            </div>
+        );
+    }
 
     return (
         <div className="relative w-full max-w-md mx-auto min-h-screen flex flex-col bg-white font-nunito">
