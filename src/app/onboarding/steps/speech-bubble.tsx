@@ -35,7 +35,7 @@ export function SpeechBubble({
 
     // Position-specific classes and bubble-tail styles
     let containerClasses = "";
-    let bubbleClasses = "bg-white p-3 rounded-2xl shadow-[0_3px_8px_rgba(0,0,0,0.2)]"; // Enhanced shadow
+    let bubbleClasses = "bg-white p-5 rounded-2xl shadow-[0_3px_8px_rgba(0,0,0,0.2)] flex items-center"; // Enhanced shadow with flex
     let caretClasses = "";
     let tailElement = null;
 
@@ -61,7 +61,7 @@ export function SpeechBubble({
     }
 
     return (
-        <div className={`${containerClasses} mb-8`}>
+        <div className={`${containerClasses} mb-6`}>
             {position !== 'top' && (
                 <div className="flex-shrink-0">
                     <Image
@@ -78,7 +78,7 @@ export function SpeechBubble({
                 className="relative flex-1"
             >
                 <div className={`${bubbleClasses} relative ${heightClass || ''}`}>
-                    <div className="text-lg font-nunito">{message}</div>
+                    <div className="text-lg font-nunito leading-relaxed w-full">{message}</div>
                     {/* The caret/tail with its own shadow */}
                     {tailElement}
                 </div>

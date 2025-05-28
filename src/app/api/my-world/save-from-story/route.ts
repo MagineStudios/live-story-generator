@@ -77,10 +77,13 @@ export async function POST(req: NextRequest) {
                 isDetectedInStory: false,
                 isPrimary: false,
                 // Optional: link to the story/page it came from
-                metadata: storyId && pageId ? {
-                    sourceStoryId: storyId,
-                    sourcePageId: pageId,
-                } : undefined,
+                // metadata is defined as Json? in Prisma, so we can store an object
+                ...(storyId && pageId ? {
+                    metadata: {
+                        sourceStoryId: storyId,
+                        sourcePageId: pageId,
+                    }
+                } : {}),
             }
         });
 

@@ -23,7 +23,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ storyId:
         }
 
         const { storyId } = params;
-        const { prompts } = await req.json() as GenerateImagesRequest;
+        const { prompts, reroll = false } = await req.json() as GenerateImagesRequest;
 
         // Verify story ownership and get current page states
         const story = await prisma.story.findUnique({
@@ -44,9 +44,15 @@ export async function POST(req: NextRequest, props: { params: Promise<{ storyId:
             return NextResponse.json({ error: 'Story not found' }, { status: 404 });
         }
 
-        // Filter out pages that already have images
+        // Filter out pages that already have images (unless it's a reroll)
         const pagesToProcess = prompts.filter(({ pageId }) => {
             const page = story.pages.find(p => p.id === pageId);
+            
+            // If it's a reroll, always process the page
+            if (reroll) {
+                console.log(`[API] Re-rolling image for page ${pageId}`);
+                return true;
+            }
             
             // Skip if page already has an image
             if (page?.chosenImage) {
@@ -56,6 +62,27 @@ export async function POST(req: NextRequest, props: { params: Promise<{ storyId:
             
             return true;
         });
+
+        // If rerolling, delete existing images first
+        if (reroll) {
+            for (const { pageId } of pagesToProcess) {
+                const page = story.pages.find(p => p.id === pageId);
+                if (page?.chosenImage) {
+                    console.log(`[API] Deleting existing image for page ${pageId}`);
+                    
+                    // Delete the image variant
+                    await prisma.imageVariant.delete({
+                        where: { id: page.chosenImage.id }
+                    });
+                    
+                    // Update the page to remove the image reference
+                    await prisma.storyPage.update({
+                        where: { id: pageId },
+                        data: { chosenImageId: null }
+                    });
+                }
+            }
+        }
 
         console.log(`[API] Processing ${pagesToProcess.length} of ${prompts.length} requested pages`);
 
@@ -83,19 +110,22 @@ export async function POST(req: NextRequest, props: { params: Promise<{ storyId:
                 const mockPromises = pagesToProcess.map(async ({ pageId, prompt }) => {
                     try {
                         // Check again if page already has an image (race condition prevention)
-                        const existingPage = await prisma.storyPage.findUnique({
-                            where: { id: pageId },
-                            include: { chosenImage: true }
-                        });
-                        
-                        if (existingPage?.chosenImage) {
-                            return {
-                                pageId,
-                                success: true,
-                                imageUrl: existingPage.chosenImage.secureUrl,
-                                imageVariantId: existingPage.chosenImage.id,
-                                skipped: true
-                            };
+                        // Unless it's a reroll, in which case we proceed
+                        if (!reroll) {
+                            const existingPage = await prisma.storyPage.findUnique({
+                                where: { id: pageId },
+                                include: { chosenImage: true }
+                            });
+                            
+                            if (existingPage?.chosenImage) {
+                                return {
+                                    pageId,
+                                    success: true,
+                                    imageUrl: existingPage.chosenImage.secureUrl,
+                                    imageVariantId: existingPage.chosenImage.id,
+                                    skipped: true
+                                };
+                            }
                         }
                         
                         // Create a mock image variant
@@ -104,7 +134,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ storyId:
                                 pageId,
                                 userId,
                                 publicId: `mock-${pageId}-${Date.now()}`,
-                                secureUrl: `https://via.placeholder.com/1024x1536?text=Page+${pageId}`,
+                                secureUrl: `https://picsum.photos/seed/${Date.now()}-${pageId}/1024/1536`, // Random image for development
                                 width: 1024,
                                 height: 1536,
                                 templateKey: 'generated',
@@ -188,6 +218,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ storyId:
                         pageId,
                         prompt,
                         userId,
+                        reroll: reroll || false,
                     },
                     // Add unique ID to prevent duplicate events
                     id: `${storyId}-${pageId}-${Date.now()}-${index}`,
