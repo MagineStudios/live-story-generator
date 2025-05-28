@@ -11,6 +11,7 @@ interface PagePrompt {
 
 interface GenerateImagesRequest {
     prompts: PagePrompt[];
+    reroll?: boolean; // Flag to indicate re-roll
 }
 
 export async function POST(req: NextRequest, props: { params: Promise<{ storyId: string }> }) {
@@ -24,19 +25,47 @@ export async function POST(req: NextRequest, props: { params: Promise<{ storyId:
         const { storyId } = params;
         const { prompts } = await req.json() as GenerateImagesRequest;
 
-        // Verify story ownership
+        // Verify story ownership and get current page states
         const story = await prisma.story.findUnique({
             where: { 
                 id: storyId,
                 userId 
             },
             include: {
-                pages: true
+                pages: {
+                    include: {
+                        chosenImage: true
+                    }
+                }
             }
         });
 
         if (!story) {
             return NextResponse.json({ error: 'Story not found' }, { status: 404 });
+        }
+
+        // Filter out pages that already have images
+        const pagesToProcess = prompts.filter(({ pageId }) => {
+            const page = story.pages.find(p => p.id === pageId);
+            
+            // Skip if page already has an image
+            if (page?.chosenImage) {
+                console.log(`[API] Page ${pageId} already has an image, skipping`);
+                return false;
+            }
+            
+            return true;
+        });
+
+        console.log(`[API] Processing ${pagesToProcess.length} of ${prompts.length} requested pages`);
+
+        if (pagesToProcess.length === 0) {
+            return NextResponse.json({
+                success: true,
+                message: 'All requested pages already have images or are being processed',
+                totalPages: 0,
+                skipped: prompts.length
+            });
         }
 
         // Check if OpenAI API key is configured
@@ -50,48 +79,66 @@ export async function POST(req: NextRequest, props: { params: Promise<{ storyId:
             if (process.env.NODE_ENV === 'development') {
                 console.log('Development mode: Creating mock images');
                 
-                const results = await Promise.all(
-                    prompts.map(async ({ pageId, prompt }) => {
-                        try {
-                            // Create a mock image variant
-                            const imageVariant = await prisma.imageVariant.create({
-                                data: {
-                                    pageId,
-                                    userId,
-                                    publicId: `mock-${pageId}-${Date.now()}`,
-                                    secureUrl: `https://via.placeholder.com/1024x1536?text=Page+${pageId}`,
-                                    width: 1024,
-                                    height: 1536,
-                                    templateKey: 'generated',
-                                    isChosen: true,
-                                },
-                            });
-
-                            // Update the page
-                            await prisma.storyPage.update({
-                                where: { id: pageId },
-                                data: {
-                                    chosenImageId: imageVariant.id,
-                                    imagePrompt: prompt,
-                                },
-                            });
-
+                // Create mock images concurrently
+                const mockPromises = pagesToProcess.map(async ({ pageId, prompt }) => {
+                    try {
+                        // Check again if page already has an image (race condition prevention)
+                        const existingPage = await prisma.storyPage.findUnique({
+                            where: { id: pageId },
+                            include: { chosenImage: true }
+                        });
+                        
+                        if (existingPage?.chosenImage) {
                             return {
                                 pageId,
                                 success: true,
-                                imageUrl: imageVariant.secureUrl,
-                                imageVariantId: imageVariant.id,
-                            };
-                        } catch (error) {
-                            console.error(`Error creating mock image for page ${pageId}:`, error);
-                            return {
-                                pageId,
-                                success: false,
-                                error: 'Failed to create mock image',
+                                imageUrl: existingPage.chosenImage.secureUrl,
+                                imageVariantId: existingPage.chosenImage.id,
+                                skipped: true
                             };
                         }
-                    })
-                );
+                        
+                        // Create a mock image variant
+                        const imageVariant = await prisma.imageVariant.create({
+                            data: {
+                                pageId,
+                                userId,
+                                publicId: `mock-${pageId}-${Date.now()}`,
+                                secureUrl: `https://via.placeholder.com/1024x1536?text=Page+${pageId}`,
+                                width: 1024,
+                                height: 1536,
+                                templateKey: 'generated',
+                                isChosen: true,
+                            },
+                        });
+
+                        // Update the page
+                        await prisma.storyPage.update({
+                            where: { id: pageId },
+                            data: {
+                                chosenImageId: imageVariant.id,
+                                imagePrompt: prompt,
+                            },
+                        });
+
+                        return {
+                            pageId,
+                            success: true,
+                            imageUrl: imageVariant.secureUrl,
+                            imageVariantId: imageVariant.id,
+                        };
+                    } catch (error) {
+                        console.error(`Error creating mock image for page ${pageId}:`, error);
+                        return {
+                            pageId,
+                            success: false,
+                            error: 'Failed to create mock image',
+                        };
+                    }
+                });
+
+                // Wait for all mock images to be created
+                const results = await Promise.all(mockPromises);
 
                 // Update story status
                 const allSuccessful = results.every(r => r.success);
@@ -115,35 +162,58 @@ export async function POST(req: NextRequest, props: { params: Promise<{ storyId:
             }, { status: 500 });
         }
 
-        // Update story status to generating
-        await prisma.story.update({
-            where: { id: storyId },
-            data: { status: StoryStatus.GENERATING }
+        // Update story status to generating only if not already generating
+        if (story.status !== StoryStatus.GENERATING) {
+            await prisma.story.update({
+                where: { id: storyId },
+                data: { status: StoryStatus.GENERATING }
+            });
+        }
+
+        // Send all events to Inngest concurrently to maximize parallelism
+        // Inngest will handle the concurrency limiting (currently set to 5)
+        const failedPages: string[] = [];
+        
+        console.log(`[API] Sending ${pagesToProcess.length} Inngest events concurrently`);
+        
+        // Send all events in parallel
+        const sendPromises = pagesToProcess.map(async ({ pageId, prompt }, index) => {
+            console.log(`[API] Sending Inngest event for page ${pageId} (${index + 1}/${pagesToProcess.length})`);
+            
+            try {
+                await inngest.send({
+                    name: "story/images.generate",
+                    data: {
+                        storyId,
+                        pageId,
+                        prompt,
+                        userId,
+                    },
+                    // Add unique ID to prevent duplicate events
+                    id: `${storyId}-${pageId}-${Date.now()}-${index}`,
+                });
+            } catch (error) {
+                console.error(`[API] Failed to send Inngest event for page ${pageId}:`, error);
+                failedPages.push(pageId);
+                // Continue with other pages even if one fails
+            }
         });
-
-        // Send events to Inngest for each page
-        const eventPromises = prompts.map(({ pageId, prompt }) =>
-            inngest.send({
-                name: "story/images.generate",
-                data: {
-                    storyId,
-                    pageId,
-                    prompt,
-                    userId,
-                },
-            })
-        );
-
-        await Promise.all(eventPromises);
+        
+        // Wait for all events to be sent
+        await Promise.all(sendPromises);
 
         // Return immediately - Inngest will handle the generation asynchronously
         return NextResponse.json({
             success: true,
             message: 'Image generation started',
-            totalPages: prompts.length,
+            totalPages: pagesToProcess.length - failedPages.length,
+            skippedPages: prompts.length - pagesToProcess.length,
+            failedPages: failedPages.length,
+            processing: pagesToProcess.filter(p => !failedPages.includes(p.pageId)).map(p => p.pageId)
         });
     } catch (error) {
         console.error('Error in image generation endpoint:', error);
+        
         const errorMessage = error instanceof Error ? error.message : 'Internal server error';
         return NextResponse.json({ error: errorMessage }, { status: 500 });
     }

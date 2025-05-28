@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect } from 'react';
-import { useStoryBuilder } from '@/lib/context/story-builder-context';
+import { useOnboarding } from '@/lib/context/onboarding-provider';
 import { Textarea as _Textarea } from '@/components/ui/textarea';
 import { Loader2 } from 'lucide-react';
 
@@ -14,7 +14,7 @@ export default function ThemePrompt() {
         isLoadingSuggestions,
         createStory,
         goToNextStep
-    } = useStoryBuilder();
+    } = useOnboarding();
 
     // Generate suggestions when component mounts
     useEffect(() => {

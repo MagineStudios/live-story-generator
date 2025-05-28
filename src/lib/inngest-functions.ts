@@ -35,10 +35,35 @@ export const generateStoryImages = inngest.createFunction(
     concurrency: {
       limit: 5, // Limit concurrent executions
     },
+    onFailure: async ({ event, error }) => {
+      // The event structure in onFailure is different - it contains the original event
+      const originalEvent = event as any;
+      const pageId = originalEvent.data?.pageId;
+      const prompt = originalEvent.data?.prompt;
+      
+      console.error(`[INNGEST] Image generation failed for page ${pageId}:`, error);
+      
+      // Log the failure to the database
+      if (pageId && prompt) {
+        try {
+          await prisma.storyPage.update({
+            where: { id: pageId },
+            data: {
+              imagePrompt: prompt,
+              // You might want to add an error field to track failures
+            },
+          });
+        } catch (dbError) {
+          console.error('[INNGEST] Failed to update database after image generation failure:', dbError);
+        }
+      }
+    },
   },
   { event: "story/images.generate" },
   async ({ event, step }) => {
     const { storyId, pageId, prompt, userId } = event.data;
+
+    console.log(`[INNGEST] Starting image generation for story ${storyId}, page ${pageId}`);
 
     // Step 1: Validate the story and page exist
     const story = await step.run("validate-story", async () => {
@@ -56,6 +81,7 @@ export const generateStoryImages = inngest.createFunction(
         throw new Error("Page not found");
       }
 
+      console.log(`[INNGEST] Validated story and page for ${pageId}`);
       return story;
     });
 
@@ -68,6 +94,8 @@ export const generateStoryImages = inngest.createFunction(
         throw new Error("OpenAI API credentials not configured");
       }
 
+      console.log(`[INNGEST] Calling OpenAI for page ${pageId} with prompt length: ${prompt.length}`);
+
       const response = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: {
@@ -78,7 +106,7 @@ export const generateStoryImages = inngest.createFunction(
         body: JSON.stringify({
           model: 'gpt-image-1',
           prompt,
-          quality: GeneratedImageQuality.High,
+          quality: GeneratedImageQuality.Low,
           moderation: 'low',
           size: GeneratedImageSize.Portrait,
           n: 1,
@@ -87,10 +115,12 @@ export const generateStoryImages = inngest.createFunction(
 
       if (!response.ok) {
         const error = await response.json();
+        console.error(`[INNGEST] OpenAI API error for page ${pageId}:`, error);
         throw new Error(error.error?.message || 'Failed to generate image');
       }
 
       const data = await response.json();
+      console.log(`[INNGEST] Successfully generated image for page ${pageId}`);
       return data.data[0];
     });
 
@@ -104,15 +134,22 @@ export const generateStoryImages = inngest.createFunction(
         `page-${pageId}-${Date.now()}`
       );
 
-      return await uploadToCloudinary(
+      console.log(`[INNGEST] Uploading to Cloudinary for page ${pageId}`);
+
+      const result = await uploadToCloudinary(
         imageData.b64_json,
         cloudinaryPath,
         'image'
       );
+
+      console.log(`[INNGEST] Successfully uploaded to Cloudinary for page ${pageId}: ${result.url}`);
+      return result;
     });
 
     // Step 4: Save to database
     await step.run("save-to-database", async () => {
+      console.log(`[INNGEST] Saving to database for page ${pageId}`);
+
       // Create image variant record
       const imageVariant = await prisma.imageVariant.create({
         data: {
@@ -136,6 +173,8 @@ export const generateStoryImages = inngest.createFunction(
         },
       });
 
+      console.log(`[INNGEST] Successfully saved image for page ${pageId}`);
+
       // Check if all pages have images
       const updatedStory = await prisma.story.findUnique({
         where: { id: storyId },
@@ -150,6 +189,9 @@ export const generateStoryImages = inngest.createFunction(
 
       if (updatedStory) {
         const allPagesHaveImages = updatedStory.pages.every(page => page.chosenImage);
+        const pagesWithImages = updatedStory.pages.filter(page => page.chosenImage).length;
+        
+        console.log(`[INNGEST] Story ${storyId} progress: ${pagesWithImages}/${updatedStory.pages.length} pages have images`);
         
         if (allPagesHaveImages) {
           // Update story status to READY
@@ -157,11 +199,14 @@ export const generateStoryImages = inngest.createFunction(
             where: { id: storyId },
             data: { status: StoryStatus.READY }
           });
+          console.log(`[INNGEST] Story ${storyId} is now READY - all images generated`);
         }
       }
 
       return imageVariant;
     });
+
+    console.log(`[INNGEST] Completed image generation for page ${pageId}`);
 
     return {
       success: true,
