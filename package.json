@@ -14,7 +14,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "postinstall": "prisma generate && prisma migrate deploy",
+    "postinstall": "prisma generate",
+    "vercel-build": "npm run migrate:deploy && next build",
+    "migrate:deploy": "node scripts/migrate.js",
     "seed-styles": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' src/scripts/seed-visual-styles.ts"
   },
   "dependencies": {
