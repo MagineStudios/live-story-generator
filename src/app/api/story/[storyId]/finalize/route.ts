@@ -1,18 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '@/lib/cloudinary';
+import { uploadToCloudinary, generateCloudinaryPath } from '@/lib/cloudinary-upload';
 import PDFDocument from 'pdfkit';
 import axios from 'axios';
-import { Readable } from 'stream';
-
-// Configure Cloudinary
-cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure: true,
-});
 export const dynamic = 'force-dynamic';
 
 // Updated type signature for Next.js 15
@@ -55,7 +47,7 @@ export async function POST(
         const pdfBuffer = await generatePDF(story, pages);
 
         // Upload PDF to Cloudinary
-        const pdfResult = await uploadPDFToCloudinary(pdfBuffer, storyId, story.title);
+        const pdfResult = await uploadPDFToCloudinary(pdfBuffer, storyId, story.title, userId);
 
         if (!pdfResult) {
             return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });
@@ -65,13 +57,13 @@ export async function POST(
         await prisma.story.update({
             where: { id: storyId },
             data: {
-                pdfUrl: pdfResult.secure_url,
+                pdfUrl: pdfResult.url,
             },
         });
 
         return NextResponse.json({
             success: true,
-            pdfUrl: pdfResult.secure_url,
+            pdfUrl: pdfResult.url,
         });
     } catch (error: any) {
         console.error('Error finalizing story:', error);
@@ -155,37 +147,32 @@ async function generatePDF(story: any, pages: any[]) {
 }
 
 // Helper function to upload PDF to Cloudinary
-async function uploadPDFToCloudinary(pdfBuffer: Buffer, storyId: string, title: string) {
+async function uploadPDFToCloudinary(pdfBuffer: Buffer, storyId: string, title: string, userId: string) {
     try {
-        const bufferStream = new Readable();
-        bufferStream.push(pdfBuffer);
-        bufferStream.push(null);
-
         // Create a timestamp for naming
         const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
         // Sanitize the title for use in a filename
         const sanitizedTitle = title.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
 
-        return new Promise<any>((resolve, reject) => {
-            const uploadStream = cloudinary.uploader.upload_stream(
-                {
-                    folder: `stories/${storyId}`,
-                    public_id: `${sanitizedTitle}-${timestamp}`,
-                    resource_type: 'raw',
-                    format: 'pdf',
-                },
-                (error, result) => {
-                    if (error) {
-                        reject(error);
-                    } else {
-                        resolve(result);
-                    }
-                }
-            );
+        // Generate Cloudinary path
+        const cloudinaryPath = generateCloudinaryPath(
+            userId,
+            null,
+            'story',
+            storyId,
+            'pdf',
+            `${sanitizedTitle}-${timestamp}`
+        );
 
-            bufferStream.pipe(uploadStream);
-        });
+        // Upload using shared utility
+        const result = await uploadToCloudinary(
+            pdfBuffer,
+            cloudinaryPath,
+            'raw'
+        );
+
+        return result;
     } catch (error) {
         console.error('Cloudinary PDF upload error:', error);
         return null;

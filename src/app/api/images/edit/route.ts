@@ -1,20 +1,12 @@
 // src/app/api/edit/route.ts
 // Next 15.3 edge route – image editing (in‑painting) with OpenAI + Cloudinary
 import { NextRequest, NextResponse } from 'next/server';
-import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
 import { Buffer } from 'buffer';
 import prisma from '@/lib/prisma';
 import type { ImageQuality } from '@prisma/client';
 import { auth } from '@clerk/nextjs/server';
+import { uploadToCloudinary, generateCloudinaryPath } from '@/lib/cloudinary-upload';
 
-// ---------------------------------------------------------------------------
-// Cloudinary config
-// ---------------------------------------------------------------------------
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!,
-});
 
 // ---------------------------------------------------------------------------
 // Route metadata
@@ -150,24 +142,25 @@ export async function POST(req: NextRequest) {
     }
 
     const savedResults = await Promise.all(items.map(async (item: OpenAIImageItem) => {
-      let result: UploadApiResponse;
+      let uploadResult;
 
       if ('url' in item && item.url) {
         console.log('Uploading via URL:', item.url);
-        result = await cloudinary.uploader.upload(item.url, {
-          folder: `live-story/users/${userId}/edits`,
-          overwrite: true,
-        });
+        // For URL, we need to fetch and convert to buffer first
+        const response = await fetch(item.url);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        uploadResult = await uploadToCloudinary(
+          buffer,
+          generateCloudinaryPath(userId, null, 'edit', `${Date.now()}`),
+          'image'
+        );
       } else if ('b64_json' in item && item.b64_json) {
         console.log('Uploading via base64 buffer');
-        const buffer = Buffer.from(item.b64_json, 'base64');
-        result = await new Promise<UploadApiResponse>((resolve, reject) => {
-          const stream = cloudinary.uploader.upload_stream(
-              { folder: `live-story/users/${userId}/edits`, overwrite: true },
-              (err, res) => (err ? reject(err) : resolve(res as UploadApiResponse))
-          );
-          stream.end(buffer);
-        });
+        uploadResult = await uploadToCloudinary(
+          item.b64_json,
+          generateCloudinaryPath(userId, null, 'edit', `${Date.now()}`),
+          'image'
+        );
       } else {
         console.error('OpenAI edit returned invalid image data', item);
         throw new Error('Invalid image data format');
@@ -179,14 +172,14 @@ export async function POST(req: NextRequest) {
           userId,
           templateKey: 'edit',
           quality: prismaQuality,
-          publicId: result.public_id,
-          secureUrl: result.secure_url,
-          width: result.width,
-          height: result.height,
+          publicId: uploadResult.publicId,
+          secureUrl: uploadResult.url,
+          width: uploadResult.width,
+          height: uploadResult.height,
         },
       });
 
-      return result.secure_url;
+      return uploadResult.url;
     }));
 
     // 6. Respond with all generated URLs

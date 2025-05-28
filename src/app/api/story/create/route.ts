@@ -3,21 +3,17 @@ import { auth } from '@clerk/nextjs/server';
 import prisma from '@/lib/prisma';
 import OpenAI from 'openai';
 import { ElementCategory, StoryStatus } from '@prisma/client';
-import fs from 'fs/promises';
-import path from 'path';
 
 /**
  * Story Creation API Endpoint
  * 
- * TESTING MODE: Image generation is temporarily disabled.
- * - Stories will be created with detailed illustration prompts
- * - Prompts will include all character/pet/location/object attributes
- * - Visual style templates will be incorporated into prompts
- * - Pages will display prompts instead of generated images
+ * Creates a story with detailed illustration prompts.
+ * - Stories are created with text and illustration prompts
+ * - Images are generated separately by the Review component
+ * - Prompts include all character/pet/location/object attributes
+ * - Visual style templates are incorporated into prompts
  * 
- * To re-enable image generation:
- * 1. Uncomment the generateStoryImages call in the async story creation process
- * 2. Remove the direct status update to READY
+ * The story remains in GENERATING status until images are created.
  */
 
 // Configure OpenAI
@@ -39,18 +35,6 @@ interface CreateStoryRequest {
     tempId?: string; // For guest users
     primaryCharacterId?: string | null;
     tone?: string[];
-}
-
-interface PageImageGenerationResult {
-    id: string;
-    imageUrl: string | null;
-    error?: string;
-}
-
-interface EditResponse {
-    urls: string[];
-    error?: string;
-    message?: string;
 }
 
 interface CharacterDescriptor {
@@ -720,148 +704,6 @@ async function generateStoryContent(
     }
 }
 
-// Helper function to generate images for a story
-async function generateStoryImages(storyId: string, pages: { storyText: string; illustrationPrompt: string }[], visualStyle: string): Promise<void> {
-    try {
-        // Get the story's user ID
-        const story = await prisma.story.findUnique({
-            where: { id: storyId },
-            select: { userId: true, styleName: true }
-        });
-
-        if (!story) throw new Error('Story not found');
-
-        const userId = story.userId;
-
-        // Generate images for each page
-        const imagePromises = pages.map(async (page, index): Promise<PageImageGenerationResult | null> => {
-            try {
-                // First, get the specific page record
-                const pageRecord = await prisma.storyPage.findFirst({
-                    where: {
-                        storyId,
-                        index,
-                    },
-                });
-
-                if (!pageRecord) {
-                    console.error(`Page not found for index ${index}`);
-                    return null;
-                }
-
-                // For the first image generation, we don't have a source image to edit
-                // So we'll use our standard "no source image" base for edit API
-                // Get the base image from the public directory
-                const baseImagePath = path.join(process.cwd(), 'public', 'assets', 'base-image.png');
-                const baseImageBuffer = await fs.readFile(baseImagePath);
-                const imageFile = new File([baseImageBuffer], 'base-image.png', { type: 'image/png' });
-
-                // Create the form data for the edit API
-                const formData = new FormData();
-                formData.append('image', imageFile);
-
-                // Use the illustration prompt from the generated content
-                // In the future, we might want to process/shorten this for the API
-                const imagePrompt = page.illustrationPrompt;
-                
-                // Log the prompt being sent to the image API
-                console.log(`Sending to image API for page ${index}:`, imagePrompt.substring(0, 100) + '...');
-
-                formData.append('prompt', imagePrompt);
-                formData.append('model', 'gpt-image-1');
-                formData.append('quality', 'low');
-                formData.append('size', '1024x1536'); // Portrait for children's book
-                formData.append('n', '1');
-
-                // Use fetch with the server's full URL to call our edit API endpoint
-                const editResponse = await fetch(`/api/images/edit`, {
-                    method: 'POST',
-                    body: formData,
-                });
-
-                if (!editResponse.ok) {
-                    const error = await editResponse.json() as { message?: string };
-                    throw new Error(`Image generation failed: ${error.message || 'Unknown error'}`);
-                }
-
-                const { urls } = await editResponse.json() as EditResponse;
-
-                if (!urls || urls.length === 0) {
-                    throw new Error('No image generated');
-                }
-
-                const imageUrl = urls[0];
-
-                // Find the imageVariant created by the edit API
-                const imageVariant = await prisma.imageVariant.findFirst({
-                    where: {
-                        secureUrl: imageUrl,
-                        ...(userId ? { userId } : {}),
-                    },
-                    orderBy: {
-                        createdAt: 'desc'
-                    }
-                });
-
-                if (!imageVariant) {
-                    throw new Error('Failed to find the created image variant');
-                }
-
-                // Update the imageVariant to link it to the page
-                const updatedVariant = await prisma.imageVariant.update({
-                    where: { id: imageVariant.id },
-                    data: {
-                        pageId: pageRecord.id,
-                        templateKey: 'original',
-                        isChosen: true
-                    }
-                });
-
-                // Update the page with the chosen image and the prompt that was actually used
-                await prisma.storyPage.update({
-                    where: {
-                        id: pageRecord.id,
-                    },
-                    data: {
-                        chosenImageId: updatedVariant.id,
-                        imagePrompt: imagePrompt, // Store the actual prompt sent to the API
-                    },
-                });
-
-                return {
-                    id: updatedVariant.id,
-                    imageUrl: updatedVariant.secureUrl
-                };
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                console.error(`Error generating image for page ${index}:`, errorMessage);
-                return {
-                    id: `error-${index}`,
-                    imageUrl: null,
-                    error: errorMessage
-                };
-            }
-        });
-
-        await Promise.all(imagePromises);
-
-        // Update story status to READY
-        await prisma.story.update({
-            where: { id: storyId },
-            data: { status: StoryStatus.READY }
-        });
-
-    } catch (error) {
-        console.error('Error in image generation process:', error);
-
-        // Update story status to ERROR if the process fails
-        await prisma.story.update({
-            where: { id: storyId },
-            data: { status: StoryStatus.CANCELLED }
-        });
-    }
-}
-
 export async function POST(req: NextRequest) {
     // Debug logging for each request
     console.log("Story create endpoint called");
@@ -1014,13 +856,14 @@ export async function POST(req: NextRequest) {
                 );
 
                 // Update the story title (if not provided)
-                await prisma.story.update({
-                    where: { id: story.id },
-                    data: {
-                        title: providedTitle || title,
-                        status: StoryStatus.GENERATING,
-                    },
-                });
+                if (!providedTitle && title) {
+                    await prisma.story.update({
+                        where: { id: story.id },
+                        data: {
+                            title: title,
+                        },
+                    });
+                }
 
                 // Create page records in the database
                 const pagePromises = pages.map((page, index) => {
@@ -1044,14 +887,14 @@ export async function POST(req: NextRequest) {
 
                 await Promise.all(pagePromises);
 
-                // TEMPORARILY DISABLED: Skip image generation for testing prompts
-                // await generateStoryImages(story.id, pages, styleName);
-                
-                // Instead, update story status to READY directly
-                await prisma.story.update({
-                    where: { id: story.id },
-                    data: { status: StoryStatus.READY }
-                });
+                // Keep status as GENERATING - images will be generated by the Review component
+                // Don't update to READY yet
+                // await prisma.story.update({
+                //     where: { id: story.id },
+                //     data: { status: StoryStatus.READY },
+                // });
+
+                console.log('Story pages created with illustration prompts. Images will be generated on the review page.');
             } catch (error) {
                 console.error('Error in story generation process:', error);
                 // Update the story status to ERROR if something goes wrong
@@ -1062,9 +905,10 @@ export async function POST(req: NextRequest) {
             }
         })();
 
-        // Respond immediately with the story ID
+        // Respond immediately with the story ID and proper response format
         return NextResponse.json({
             id: story.id,
+            storyId: story.id, // Some components might expect this
             message: 'Story generation started',
             status: StoryStatus.GENERATING
         });

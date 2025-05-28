@@ -327,28 +327,45 @@ export function StoryBuilderProvider({ children }: { children: ReactNode }) {
     };
 
     const createStory = async () => {
-        if (!visualStyle || !themePrompt) return;
+        if (!visualStyle || !themePrompt) {
+            console.error('Missing visualStyle or themePrompt');
+            return;
+        }
 
         try {
             setIsGeneratingStory(true);
+            console.log('Creating story with:', { visualStyle, themePrompt, selectedElements });
 
             const response = await fetch('/api/story/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    prompt: themePrompt,
+                    styleId: visualStyle.id,
+                    styleName: visualStyle.name,
                     selectedElements,
-                    visualStyle,
-                    themePrompt
                 }),
             });
 
-            if (!response.ok) throw new Error('Failed to create story');
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('Story creation failed:', error);
+                throw new Error(error.error || 'Failed to create story');
+            }
 
-            const { storyId } = await response.json();
+            const data = await response.json();
+            console.log('Story creation response:', data);
+            
+            const storyId = data.storyId || data.id; // Handle both response formats
+            if (!storyId) {
+                throw new Error('No story ID returned from API');
+            }
+            
             setGeneratedStoryId(storyId);
             return storyId;
         } catch (error) {
             console.error('Error creating story:', error);
+            throw error; // Re-throw to be caught by the calling component
         } finally {
             setIsGeneratingStory(false);
         }

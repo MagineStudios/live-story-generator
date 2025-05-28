@@ -15,7 +15,7 @@ interface Story {
 
 export function FinishStep() {
     const router = useRouter();
-    const { generatedStoryId } = useOnboarding();
+    const { generatedStoryId, resetOnboarding } = useOnboarding();
     const [story, setStory] = useState<Story | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -144,7 +144,10 @@ export function FinishStep() {
                         >
                             <Button
                                 variant="ghost"
-                                onClick={() => router.push('/onboarding')}
+                                onClick={() => {
+                                    // Reset onboarding to start fresh
+                                    resetOnboarding();
+                                }}
                                 className="w-full py-6 text-lg font-medium rounded-full text-gray-600 hover:bg-gray-100 cursor-pointer transition-all duration-300"
                             >
                                 Create Another Story

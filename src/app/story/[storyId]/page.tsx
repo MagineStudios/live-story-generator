@@ -15,7 +15,15 @@ interface Story {
         text: string;
         index: number;
         chosenImageId?: string;
+        chosenImage?: {
+            id: string;
+            secureUrl: string;
+            publicId: string;
+            width: number;
+            height: number;
+        };
         microprompts?: string[];
+        illustrationPrompt?: string;
     }[];
 }
 
@@ -170,7 +178,7 @@ export default function StoryPage() {
                             Go Home
                         </Button>
                         <Button
-                            onClick={() => router.push('/onboarding')}
+                            onClick={() => router.push('/onboarding?reset=true')}
                             className="bg-[#4CAF50] hover:bg-[#43a047] text-white"
                         >
                             Create New Story
@@ -201,14 +209,6 @@ export default function StoryPage() {
     }
 
     const currentPageContent = story.pages[currentPage];
-
-    // Helper function to get image URL
-    const getImageUrl = (chosenImageId?: string) => {
-        if (!chosenImageId) return null;
-        // You'll need to implement the logic to get the image URL based on your system
-        // This might involve fetching from an API or constructing a URL
-        return `/api/images/${chosenImageId}`;
-    };
 
     return (
         <div className="max-w-4xl mx-auto p-6">
@@ -246,13 +246,16 @@ export default function StoryPage() {
                     <div className="flex flex-col md:flex-row gap-6">
                         {/* Story illustration */}
                         <div className="md:w-1/2">
-                            {currentPageContent.chosenImageId ? (
+                            {currentPageContent.chosenImage ? (
                                 <img
-                                    src={getImageUrl(currentPageContent.chosenImageId) || ''}
+                                    src={currentPageContent.chosenImage.secureUrl}
                                     alt={`Illustration for page ${currentPage + 1}`}
-                                    className="w-full h-auto rounded-lg shadow-lg"
+                                    className="w-full h-auto rounded-lg shadow-lg object-cover"
+                                    width={currentPageContent.chosenImage.width}
+                                    height={currentPageContent.chosenImage.height}
                                     onError={(e) => {
                                         // Fallback if image fails to load
+                                        console.error('Image failed to load:', currentPageContent.chosenImage?.secureUrl);
                                         e.currentTarget.src = '/assets/placeholder-image.jpg';
                                     }}
                                 />
@@ -269,12 +272,12 @@ export default function StoryPage() {
                                 <div className="text-sm text-gray-500 mb-2">Page {currentPage + 1} of {story.pages.length}</div>
                                 <p className="text-lg leading-relaxed flex-grow">{currentPageContent.text}</p>
 
-                                {/* Development only - display microprompts */}
-                                {process.env.NODE_ENV === 'development' && currentPageContent.microprompts && (
+                                {/* Development only - display illustration prompt */}
+                                {process.env.NODE_ENV === 'development' && currentPageContent.illustrationPrompt && (
                                     <details className="mt-4 text-xs text-gray-500 border-t pt-2">
                                         <summary>Illustration Prompt (Dev Only)</summary>
-                                        <p className="mt-1 p-2 bg-gray-50 rounded text-xs">
-                                            {currentPageContent.microprompts[0] || 'No illustration prompt'}
+                                        <p className="mt-1 p-2 bg-gray-50 rounded text-xs whitespace-pre-wrap">
+                                            {currentPageContent.illustrationPrompt}
                                         </p>
                                     </details>
                                 )}
@@ -334,7 +337,7 @@ export default function StoryPage() {
             <div className="mt-8 flex justify-center space-x-4">
                 <Button
                     variant="outline"
-                    onClick={() => router.push('/onboarding')}
+                    onClick={() => router.push('/onboarding?reset=true')}
                     className="border-2 border-[#4CAF50] text-[#4CAF50] hover:bg-[#4CAF50]/10"
                 >
                     Create Another Story

@@ -32,8 +32,18 @@ export default function ThemePrompt() {
     };
 
     const handleGenerateStory = async () => {
-        await createStory();
-        goToNextStep();
+        try {
+            const storyId = await createStory();
+            if (storyId) {
+                goToNextStep();
+            } else {
+                console.error('No story ID returned');
+                // TODO: Show error to user
+            }
+        } catch (error) {
+            console.error('Failed to generate story:', error);
+            // TODO: Show error to user
+        }
     };
 
     return (

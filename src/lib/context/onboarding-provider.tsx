@@ -58,6 +58,7 @@ interface OnboardingState {
     goToNextStep: () => void;
     goToPrevStep: () => void;
     goToStep: (step: number) => void; // New: Add direct step navigation
+    resetOnboarding: () => void; // New: Add reset functionality
     // Error handling
     setGenerationError: (error: string | null) => void;
 }
@@ -92,8 +93,39 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     const { userId } = useAuth();  // Clerk user ID (if logged in)
     const MAX_STEPS = 11;          // Total steps: 0-11 in the wizard
 
+    // Check for reset parameter on mount
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shouldReset = urlParams.get('reset') === 'true';
+        
+        if (shouldReset) {
+            // Remove the reset parameter from URL
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('reset');
+            window.history.replaceState({}, '', newUrl.toString());
+            
+            // Trigger reset
+            resetOnboarding();
+        }
+    }, []); // Empty dependency array for mount only
+
     // Determine or generate a tempId for guest sessions only
     const [tempId, setTempId] = useState<string | null>(null);
+    const [shouldResetOnMount, setShouldResetOnMount] = useState(false);
+    
+    // Check for reset parameter on mount
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shouldReset = urlParams.get('reset') === 'true';
+        
+        if (shouldReset) {
+            setShouldResetOnMount(true);
+            // Remove the reset parameter from URL
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('reset');
+            window.history.replaceState({}, '', newUrl.toString());
+        }
+    }, []); // Empty dependency array for mount only
     useEffect(() => {
         if (userId) {
             // If user logs in, clear tempId and local storage
@@ -120,6 +152,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             if (stepParam) {
                 const step = parseInt(stepParam, 10);
                 if (!isNaN(step) && step >= 0 && step < MAX_STEPS) {
+                    console.log('Setting step from URL (guest):', step);
                     _setCurrentStep(step);
                 }
             }
@@ -131,19 +164,44 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 const res = await fetch('/api/onboarding/fetch');
                 if (!res.ok) throw new Error('Failed to load onboarding data');
                 const data = await res.json();
+                console.log('Loaded onboarding data:', data);
+                
                 if (data.storyGoal) _setStoryGoal(data.storyGoal);
                 if (data.tone) _setTone(data.tone);
                 
                 // Check URL for step parameter, but prefer saved step
                 const urlParams = new URLSearchParams(window.location.search);
                 const stepParam = urlParams.get('step');
+                
+                // IMPORTANT: Don't restore a step that's past the current generation
+                // If we're generating a story, don't jump to finish
                 if (data.currentStep !== undefined) {
-                    _setCurrentStep(data.currentStep);
+                    console.log('Saved currentStep from server:', data.currentStep);
+                    
+                    // Don't restore step 10 unless we have a completed story with images
+                    if (data.currentStep === 10 && (!data.storyId || !generatedStoryId)) {
+                        console.log('Preventing restore to step 10 without completed story');
+                        _setCurrentStep(0); // Reset to start
+                    } else if (data.currentStep === 9 && !data.storyId) {
+                        console.log('Preventing restore to step 9 without story');
+                        _setCurrentStep(8); // Go back to generation
+                    } else if (data.currentStep <= 8) {
+                        console.log('Restoring saved step:', data.currentStep);
+                        _setCurrentStep(data.currentStep);
+                    } else {
+                        // For steps 9-10, only restore if we have the story ID
+                        const stepFromUrl = parseInt(urlParams.get('step') || '0', 10);
+                        console.log('Using URL step instead:', stepFromUrl);
+                        _setCurrentStep(stepFromUrl);
+                    }
                 } else if (stepParam) {
                     const step = parseInt(stepParam, 10);
                     if (!isNaN(step) && step >= 0 && step < MAX_STEPS) {
+                        console.log('Setting step from URL:', step);
                         _setCurrentStep(step);
                     }
+                } else {
+                    console.log('No valid step to restore, keeping current:', currentStep);
                 }
             } catch (err) {
                 console.error('Onboarding fetch error:', err);
@@ -201,6 +259,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             const saved = localStorage.getItem('magicstory_onboarding');
             if (saved) {
                 const data = JSON.parse(saved);
+                console.log('Loading from localStorage:', data);
+                
                 if (data.storyGoal) {
                     if (Array.isArray(data.storyGoal)) {
                         _setStoryGoal(data.storyGoal);
@@ -221,11 +281,22 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 if (data.themePrompt) _setThemePrompt(data.themePrompt);
                 if (data.themeSuggestions) setThemeSuggestions(data.themeSuggestions);
                 if (data.currentStep !== undefined) {
-                    // Validate step is within bounds
+                    // Validate step is within bounds AND not jumping to finish
                     const step = Math.max(0, Math.min(data.currentStep, MAX_STEPS - 1));
-                    _setCurrentStep(step);
+                    
+                    // Don't restore step 10 if there's no completed story
+                    if (step === 10 && !data.generatedStoryId) {
+                        console.log('Preventing restore to step 10 without completed story');
+                        _setCurrentStep(0); // Reset to start
+                    } else if (step === 9 && !data.generatedStoryId) {
+                        console.log('Preventing restore to step 9 without story ID');
+                        _setCurrentStep(8); // Go back to generation
+                    } else {
+                        _setCurrentStep(step);
+                    }
                 }
-                if (data.primaryCharacterId !== undefined) _setPrimaryCharacterId(data.primaryCharacterId); // New: Load primaryCharacterId
+                if (data.primaryCharacterId !== undefined) _setPrimaryCharacterId(data.primaryCharacterId);
+                if (data.generatedStoryId) setGeneratedStoryId(data.generatedStoryId);
             }
         } catch (err) {
             console.warn('Failed to parse saved onboarding data:', err);
@@ -346,26 +417,44 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     // Navigation: go to the next step
     const goToNextStep = useCallback(() => {
-        _setCurrentStep(curr => {
-            const next = Math.min(curr + 1, MAX_STEPS - 1);
-            if (next !== curr) {
-                // Update URL with pushState for forward navigation
+        const next = Math.min(currentStep + 1, MAX_STEPS - 1);
+        console.log(`goToNextStep called: current=${currentStep}, next=${next}`);
+        
+        // Special check: Can only go to step 10 from step 9
+        if (next === 10 && currentStep !== 9) {
+            console.error(`BLOCKED: Attempting to jump to step 10 from step ${currentStep}. Must go through step 9 first!`);
+            // Force to step 9 instead
+            _setCurrentStep(9);
+            
+            setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('step', '9');
+                window.history.pushState({ step: 9 }, '', url.toString());
+            }, 0);
+            
+            return;
+        }
+        
+        if (next !== currentStep) {
+            _setCurrentStep(next);
+            
+            // Defer URL update to avoid React warning
+            setTimeout(() => {
                 const url = new URL(window.location.href);
                 url.searchParams.set('step', next.toString());
                 window.history.pushState({ step: next }, '', url.toString());
-                
-                // Save immediately without debouncing for step changes
-                if (userId) {
-                    fetch('/api/onboarding/save', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ currentStep: next }),
-                    }).catch(console.error);
-                }
+            }, 0);
+            
+            // Save immediately without debouncing for step changes
+            if (userId) {
+                fetch('/api/onboarding/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ currentStep: next }),
+                }).catch(console.error);
             }
-            return next;
-        });
-    }, [userId]);
+        }
+    }, [currentStep, userId]);
 
     const goToPrevStep = useCallback(() => {
         // Use browser back for better history management
@@ -375,10 +464,12 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             _setCurrentStep(curr => {
                 const prev = Math.max(curr - 1, 0);
                 if (prev !== curr) {
-                    // Update URL
-                    const url = new URL(window.location.href);
-                    url.searchParams.set('step', prev.toString());
-                    window.history.replaceState({ step: prev }, '', url.toString());
+                    // Defer URL update to avoid React warning
+                    setTimeout(() => {
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('step', prev.toString());
+                        window.history.replaceState({ step: prev }, '', url.toString());
+                    }, 0);
                     
                     // Save immediately without debouncing for step changes
                     if (userId) {
@@ -397,8 +488,24 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     // New: Direct step navigation
     const goToStep = useCallback((step: number) => {
         const validStep = Math.max(0, Math.min(step, MAX_STEPS - 1));
+        console.log(`goToStep called: current=${currentStep}, requested=${step}, valid=${validStep}`);
+        
+        // Prevent invalid jumps
+        if (validStep === 10 && currentStep < 9) {
+            console.error('Cannot jump to finish step without going through review!');
+            return;
+        }
+        
         if (validStep !== currentStep) {
             _setCurrentStep(validStep);
+            
+            // Defer URL update to avoid React warning
+            setTimeout(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('step', validStep.toString());
+                window.history.pushState({ step: validStep }, '', url.toString());
+            }, 0);
+            
             // Save immediately without debouncing for step changes
             if (userId) {
                 fetch('/api/onboarding/save', {
@@ -423,6 +530,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
         // Handle browser back/forward navigation
         const handlePopState = (event: PopStateEvent) => {
+            console.log('PopState event:', event.state);
             const state = event.state;
             if (state && typeof state.step === 'number') {
                 goToStep(state.step);
@@ -430,6 +538,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 // Try to get step from URL if state is missing
                 const urlParams = new URLSearchParams(window.location.search);
                 const stepParam = urlParams.get('step');
+                console.log('Step from URL:', stepParam);
                 if (stepParam) {
                     const step = parseInt(stepParam, 10);
                     if (!isNaN(step)) {
@@ -637,6 +746,54 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         }
     }, [visualStyle, selectedElements, tone, userId, primaryCharacterId]); // Add primaryCharacterId to dependencies
 
+    // Reset all onboarding data to start fresh
+    const resetOnboarding = useCallback(async () => {
+        // Reset all state
+        _setStoryGoal([]);
+        _setTone([]);
+        setSelectedElements([]);
+        setUploadedElements([]);
+        _setVisualStyle(undefined);
+        _setThemePrompt('');
+        setThemeSuggestions([]);
+        _setCurrentStep(1); // Start at step 1 (skip welcome)
+        _setPrimaryCharacterId(null);
+        setGeneratedStoryId(undefined);
+        setGenerationError(null);
+        setGenerationProgress(0);
+        setIsGenerating(false);
+        setIsGeneratingStory(false);
+        setIsLoadingSuggestions(false);
+        setIsAnalyzingImage(false);
+
+        // Clear localStorage for guests
+        if (!userId) {
+            localStorage.removeItem('magicstory_onboarding');
+        }
+
+        // Clear database for logged-in users - wait for completion
+        if (userId) {
+            try {
+                const response = await fetch('/api/onboarding/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                
+                if (!response.ok) {
+                    console.error('Failed to reset onboarding in database');
+                } else {
+                    const data = await response.json();
+                    console.log('Onboarding reset successful:', data);
+                }
+            } catch (error) {
+                console.error('Error resetting onboarding in database:', error);
+            }
+        }
+
+        // Force a full page reload to ensure clean state, starting at step 1
+        window.location.href = '/onboarding?step=1';
+    }, [userId]);
+
     // Create/generate the story based on current selections
     const createStory = useCallback(async (): Promise<{ id: string; status: string } | undefined> => {
         setIsGenerating(true);
@@ -654,7 +811,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 prompt: themePrompt,
                 styleId: visualStyle.id,
                 styleName: visualStyle.name,
-                tone
+                tone,
+                primaryCharacterId
             });
 
             const response = await fetch('/api/story/create', {
@@ -665,7 +823,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                     styleId: visualStyle.id,
                     styleName: visualStyle.name,
                     tone: tone || [],
-                    lengthInPages: 5 // Using 5 pages as requested
+                    lengthInPages: 5, // Using 5 pages as requested
+                    primaryCharacterId: primaryCharacterId || null
                 }),
             });
 
@@ -702,7 +861,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             // Note: We don't set isGeneratingStory to false here because
             // we still need to track the story generation progress via polling
         }
-    }, [visualStyle, themePrompt, tone]);
+    }, [visualStyle, themePrompt, tone, primaryCharacterId]);
 
     // Update progress when story is being generated
     useEffect(() => {
@@ -716,26 +875,38 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
                     const storyData = await response.json();
 
-                    // Update progress based on status
-                    if (storyData.status === StoryStatus.READY) {
-                        setGenerationProgress(100);
-                        setIsGeneratingStory(false);
-                        if (pollInterval !== null) clearInterval(pollInterval);
-                    } else if (storyData.status === StoryStatus.GENERATING) {
-                        // Calculate progress based on pages
-                        const pagesCreated = storyData.pages?.length || 0;
-                        const targetPages = 5;
-                        const newProgress = Math.min(90, 25 + (pagesCreated / targetPages * 65));
-                        setGenerationProgress(newProgress);
-                    } else if (storyData.status === StoryStatus.CANCELLED) {
+                    // Update progress based on pages created
+                    const pagesCreated = storyData.pages?.length || 0;
+                    const targetPages = 5;
+                    
+                    console.log('Story polling update:', {
+                        storyId: generatedStoryId,
+                        status: storyData.status,
+                        pagesCreated,
+                        targetPages,
+                        currentProgress: generationProgress
+                    });
+                    
+                    if (storyData.status === StoryStatus.CANCELLED) {
                         setGenerationError('Story generation was cancelled');
                         setIsGeneratingStory(false);
                         if (pollInterval !== null) clearInterval(pollInterval);
+                    } else if (pagesCreated >= targetPages) {
+                        // All pages created, set to 100% and stop generating
+                        console.log('All pages created, setting progress to 100%');
+                        setGenerationProgress(100);
+                        setIsGeneratingStory(false);
+                        if (pollInterval !== null) clearInterval(pollInterval);
+                        // Don't automatically go to next step - let GeneratingStep handle navigation
+                    } else {
+                        // Still creating pages
+                        const newProgress = Math.min(90, 25 + (pagesCreated / targetPages * 65));
+                        setGenerationProgress(newProgress);
                     }
                 } catch (error) {
                     console.error('Error polling story status:', error);
                 }
-            }, 2000);
+            }, 1000); // Poll every 1 second for faster updates
         }
 
         return () => {
@@ -782,7 +953,16 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         goToNextStep,
         goToPrevStep,
         goToStep, // NEW: Add direct navigation
+        resetOnboarding, // NEW: Add reset functionality
     };
+
+    // Handle reset after component is fully initialized
+    useEffect(() => {
+        if (shouldResetOnMount && !isInitializing) {
+            resetOnboarding();
+            setShouldResetOnMount(false);
+        }
+    }, [shouldResetOnMount, isInitializing, resetOnboarding]);
 
     // **Migration after signup**: if the user has just signed up (userId now exists), we have guest data, and a story has been generated, trigger migration.
     useEffect(() => {

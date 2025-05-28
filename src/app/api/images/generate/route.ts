@@ -1,6 +1,7 @@
 // Next.js 15.3.1 API route with App Router
 import { NextRequest, NextResponse } from 'next/server';
 import pLimit from 'p-limit';
+import {auth} from "@clerk/nextjs/server";
 
 // Mark this route as dynamic to ensure it's not cached
 export const dynamic = 'force-dynamic';
@@ -87,13 +88,17 @@ interface OpenAIImageResponse {
 export async function POST(request: NextRequest) {
     try {
         // Parse the request body
+        const { userId } = await auth();
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
+        }
         const body = await request.json();
         const {
             prompt,
             model = 'gpt-image-1',
             quality = GeneratedImageQuality.High,
             moderation = 'low',
-            output_compression = 50,
+            output_compression = 0,
             size = GeneratedImageSize.Landscape,
             n = 1 // Number of images to generate
         } = body;
@@ -105,11 +110,19 @@ export async function POST(request: NextRequest) {
 
         // Get API key from environment variables
         const apiKey = process.env.OPENAI_API_KEY;
-        const orgId  = process.env.OPENAI_ORG_ID!;
+        const orgId  = process.env.OPENAI_ORG_ID;
         if (!apiKey) {
             console.error('OPENAI_API_KEY is not set');
             return NextResponse.json(
                 { error: 'API key configuration error' },
+                { status: 500 }
+            );
+        }
+        
+        if (!orgId) {
+            console.error('OPENAI_ORG_ID is not set');
+            return NextResponse.json(
+                { error: 'Organization ID configuration error' },
                 { status: 500 }
             );
         }

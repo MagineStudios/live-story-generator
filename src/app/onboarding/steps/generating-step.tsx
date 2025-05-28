@@ -24,6 +24,7 @@ export function GeneratingStep() {
     // Local state
     const [isGenerationStarted, setIsGenerationStarted] = useState(false);
     const [isCreatingStory, setIsCreatingStory] = useState(false);
+    const [hasNavigated, setHasNavigated] = useState(false); // Prevent multiple navigations
 
     // Function to start the story creation process
     const startStoryCreation = async () => {
@@ -79,16 +80,58 @@ export function GeneratingStep() {
         }
     };
 
-    // Navigation when story is complete
+    // Navigation when story is complete (move to review as soon as pages are ready)
     useEffect(() => {
-        if (generationProgress >= 100) {
-            const timer = setTimeout(() => {
-                goToNextStep();
-            }, 1500);
+        console.log('GeneratingStep navigation effect:', {
+            generatedStoryId,
+            generationProgress,
+            hasNavigated
+        });
+        
+        if (generatedStoryId && generationProgress >= 25 && !hasNavigated) {
+            // Check if story pages are ready
+            const checkStoryReady = async () => {
+                try {
+                    const response = await fetch(`/api/story/${generatedStoryId}`);
+                    if (!response.ok) {
+                        console.error('Failed to fetch story:', response.status);
+                        return;
+                    }
 
-            return () => clearTimeout(timer);
+                    const storyData = await response.json();
+                    console.log('Story data in GeneratingStep:', {
+                        id: storyData.id,
+                        status: storyData.status,
+                        pageCount: storyData.pages?.length
+                    });
+                    
+                    // Navigate to review if story has pages (regardless of status)
+                    // The review step will handle image generation
+                    if (storyData.pages && storyData.pages.length > 0 && !hasNavigated) {
+                        console.log('Story pages ready, navigating to review step (step 9)');
+                        setHasNavigated(true); // Prevent multiple navigations
+                        goToNextStep(); // This should go to step 9 (Review)
+                    }
+                } catch (error) {
+                    console.error('Error checking story status:', error);
+                }
+            };
+
+            // Check immediately
+            checkStoryReady();
+            
+            // Only set up interval if we haven't navigated yet
+            if (!hasNavigated) {
+                const interval = setInterval(() => {
+                    if (!hasNavigated) {
+                        checkStoryReady();
+                    }
+                }, 1000);
+                
+                return () => clearInterval(interval);
+            }
         }
-    }, [generationProgress, goToNextStep]);
+    }, [generatedStoryId, generationProgress, goToNextStep, hasNavigated]);
 
     // Handle retry
     const handleRetry = () => {
@@ -179,7 +222,10 @@ export function GeneratingStep() {
                             </Button>
 
                             <p className="text-sm text-gray-500 mt-4">
-                                This will create a 5-page story with illustration prompts (images temporarily disabled for testing)
+                                This will create a 5-page story with illustrations
+                            </p>
+                            <p className="text-xs text-orange-600 mt-2">
+                                Note: Image generation requires a valid OpenAI API key
                             </p>
                         </motion.div>
                     ) : (

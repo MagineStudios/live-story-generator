@@ -18,21 +18,33 @@ export async function GET(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-
-        // Get the story data
+        // Get the story data with chosen images
         const story = await prisma.story.findUnique({
             where: { id: storyId },
             include: {
                 pages: {
                     orderBy: { index: 'asc' },
-                    select: {
-                        id: true,
-                        text: true,
-                        index: true,
-                        microprompts: true,
-                        illustrationPrompt: true,
-                        imagePrompt: true,
-                        chosenImageId: true,
+                    include: {
+                        chosenImage: {
+                            select: {
+                                id: true,
+                                secureUrl: true,
+                                publicId: true,
+                                width: true,
+                                height: true,
+                            }
+                        },
+                        variants: {
+                            select: {
+                                id: true,
+                                secureUrl: true,
+                                publicId: true,
+                                width: true,
+                                height: true,
+                                templateKey: true,
+                                isChosen: true,
+                            }
+                        }
                     },
                 },
             },
