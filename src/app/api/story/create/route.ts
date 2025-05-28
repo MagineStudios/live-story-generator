@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import prisma from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 import { ElementCategory, StoryStatus } from '@prisma/client';
 
@@ -16,11 +16,21 @@ import { ElementCategory, StoryStatus } from '@prisma/client';
  * The story remains in GENERATING status until images are created.
  */
 
-// Configure OpenAI
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || '',
-    organization: process.env.OPENAI_ORG_ID,
-});
+// Lazy initialization of OpenAI client
+let openai: OpenAI | null = null;
+
+function getOpenAIClient() {
+    if (!openai) {
+        if (!process.env.OPENAI_API_KEY) {
+            throw new Error('OPENAI_API_KEY is not configured');
+        }
+        openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+            organization: process.env.OPENAI_ORG_ID,
+        });
+    }
+    return openai;
+}
 
 interface CreateStoryRequest {
     title?: string;
@@ -598,7 +608,7 @@ async function generateStoryContent(
         - Ensure valid JSON formatting with properly escaped strings`;
 
         // Call OpenAI with the template-based prompt
-        const response = await openai.chat.completions.create({
+        const response = await getOpenAIClient().chat.completions.create({
             model: "gpt-4.1", // Keep using gpt-4.1 for better writing quality
             response_format: { type: "json_object" },
             messages: [

@@ -17,10 +17,21 @@ interface VisualStyle {
     name: string;
 }
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    organization: process.env.OPENAI_ORG_ID,
-});
+// Lazy initialization of OpenAI client
+let openai: OpenAI | null = null;
+
+function getOpenAIClient() {
+    if (!openai) {
+        if (!process.env.OPENAI_API_KEY) {
+            throw new Error('OPENAI_API_KEY is not configured');
+        }
+        openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+            organization: process.env.OPENAI_ORG_ID,
+        });
+    }
+    return openai;
+}
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
@@ -124,7 +135,7 @@ export async function POST(req: NextRequest) {
         prompt += ` Each story idea should have a title (like "Adventure" or "Friendship") and a brief, engaging description (about 20-30 words) that parents can use as a theme for a children's book. Format the response as a JSON object with a 'suggestions' array containing objects with 'title' and 'text' fields.`;
 
         // Get suggestions from GPT
-        const response = await openai.chat.completions.create({
+        const response = await getOpenAIClient().chat.completions.create({
             model: "gpt-4.1",
             messages: [
                 {

@@ -4,10 +4,21 @@ import { auth } from '@clerk/nextjs/server';
 import { ElementCategory } from '@prisma/client';
 import { Readable } from 'stream';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    organization: process.env.OPENAI_ORG_ID,
-});
+// Lazy initialization of OpenAI client
+let openai: OpenAI | null = null;
+
+function getOpenAIClient() {
+    if (!openai) {
+        if (!process.env.OPENAI_API_KEY) {
+            throw new Error('OPENAI_API_KEY is not configured');
+        }
+        openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+            organization: process.env.OPENAI_ORG_ID,
+        });
+    }
+    return openai;
+}
 
 // Convert Buffer to ReadableStream for processing
 function bufferToStream(buffer: Buffer) {
@@ -48,7 +59,7 @@ export async function POST(req: NextRequest) {
         Explanation: [your brief explanation]
         Category: [category name]`;
 
-        const response = await openai.chat.completions.create({
+        const response = await getOpenAIClient().chat.completions.create({
             model: "gpt-4.1",
             messages: [
                 {
