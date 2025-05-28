@@ -131,56 +131,86 @@ export function ReviewStep() {
                 const result = JSON.parse(responseText);
                 
                 if (result.success) {
-                    // Update page statuses based on results
-                    result.results.forEach((res: any) => {
-                        setPageImageStatus(prev => ({
-                            ...prev,
-                            [res.pageId]: res.success ? 'complete' : 'error'
-                        }));
-                    });
-                    
-                    const successCount = result.results.filter((r: any) => r.success).length;
-                    
-                    // Track progress during generation by polling
-                    let progressInterval: ReturnType<typeof setInterval> | null = null;
-                    if (successCount < prompts.length) {
-                        progressInterval = setInterval(async () => {
+                    // Check if we're in development mode (has results) or production mode (async)
+                    if (result.results) {
+                        // Development mode - update statuses immediately
+                        result.results.forEach((res: any) => {
+                            setPageImageStatus(prev => ({
+                                ...prev,
+                                [res.pageId]: res.success ? 'complete' : 'error'
+                            }));
+                        });
+                        
+                        const successCount = result.results.filter((r: any) => r.success).length;
+                        
+                        if (successCount === prompts.length) {
+                            toast.success('All images generated successfully!');
+                        } else {
+                            toast.warning(`Generated ${successCount} of ${prompts.length} images`);
+                        }
+                        
+                        // Refresh story data to get the new images
+                        const res = await fetch(`/api/story/${generatedStoryId}`);
+                        if (res.ok) {
+                            const updatedData = await res.json();
+                            setStoryData(updatedData);
+                        }
+                    } else {
+                        // Production mode with Inngest - images will generate asynchronously
+                        toast.info('Images are being generated in the background', {
+                            description: 'This may take 1-2 minutes. The page will update automatically.',
+                            duration: 5000
+                        });
+                        
+                        // Start polling for image status
+                        let pollCount = 0;
+                        const maxPolls = 60; // Poll for up to 2 minutes (60 * 2 seconds)
+                        
+                        const pollInterval = setInterval(async () => {
+                            pollCount++;
+                            
                             try {
                                 const statusRes = await fetch(`/api/story/${generatedStoryId}`);
                                 if (statusRes.ok) {
                                     const statusData = await statusRes.json();
+                                    
+                                    // Update page statuses based on actual data
+                                    statusData.pages.forEach((page: StoryPage) => {
+                                        if (page.chosenImage) {
+                                            setPageImageStatus(prev => ({
+                                                ...prev,
+                                                [page.id]: 'complete'
+                                            }));
+                                        }
+                                    });
+                                    
                                     const completedPages = statusData.pages.filter((p: StoryPage) => p.chosenImage).length;
                                     const progress = (completedPages / statusData.pages.length) * 100;
                                     setImageGenerationProgress(progress);
                                     
-                                    if (completedPages === statusData.pages.length || progress >= 100) {
-                                        if (progressInterval) clearInterval(progressInterval);
+                                    // Update story data
+                                    setStoryData(statusData);
+                                    
+                                    // Check if all images are done or if we've polled too long
+                                    if (completedPages === statusData.pages.length) {
+                                        clearInterval(pollInterval);
+                                        toast.success('All images generated successfully!');
+                                        setImageGenerationProgress(100);
+                                    } else if (pollCount >= maxPolls) {
+                                        clearInterval(pollInterval);
+                                        toast.warning('Image generation is taking longer than expected', {
+                                            description: 'You can continue and check back later.'
+                                        });
                                     }
                                 }
                             } catch (e) {
-                                console.error('Error polling progress:', e);
+                                console.error('Error polling for image status:', e);
                             }
                         }, 2000);
                         
-                        // Clear interval after 2 minutes max
-                        setTimeout(() => {
-                            if (progressInterval) clearInterval(progressInterval);
-                        }, 120000);
-                    }
-                    
-                    setImageGenerationProgress(100);
-                    
-                    if (successCount === prompts.length) {
-                        toast.success('All images generated successfully!');
-                    } else {
-                        toast.warning(`Generated ${successCount} of ${prompts.length} images`);
-                    }
-                    
-                    // Refresh story data to get the new images
-                    const res = await fetch(`/api/story/${generatedStoryId}`);
-                    if (res.ok) {
-                        const updatedData = await res.json();
-                        setStoryData(updatedData);
+                        // Store interval reference for cleanup
+                        // Clear it if component unmounts
+                        return () => clearInterval(pollInterval);
                     }
                 } else {
                     // Mark all as error
@@ -317,6 +347,74 @@ export function ReviewStep() {
             generateImages(storyData);
         }
     }, [storyData, generateImages]);
+
+    // Re-roll a specific image
+    const handleRerollImage = useCallback(async (pageId: string, prompt: string) => {
+        if (!prompt) {
+            toast.error('No prompt available for this image');
+            return;
+        }
+
+        // Set status to generating for this specific page
+        setPageImageStatus(prev => ({ ...prev, [pageId]: 'generating' }));
+        
+        try {
+            console.log('Re-rolling image for page:', pageId);
+            
+            const response = await fetch(`/api/story/${generatedStoryId}/generate-images`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    prompts: [{ pageId, prompt }] 
+                }),
+            });
+
+            const responseText = await response.text();
+            
+            if (!response.ok) {
+                let errorData;
+                try {
+                    errorData = JSON.parse(responseText);
+                } catch {
+                    errorData = { error: responseText };
+                }
+                throw new Error(errorData.error || 'Failed to generate image');
+            }
+
+            const result = JSON.parse(responseText);
+            
+            if (result.success && result.results[0]?.success) {
+                // Update page status to complete
+                setPageImageStatus(prev => ({ ...prev, [pageId]: 'complete' }));
+                toast.success('New image generated successfully!');
+                
+                // Refresh story data to get the new image
+                const res = await fetch(`/api/story/${generatedStoryId}`);
+                if (res.ok) {
+                    const updatedData = await res.json();
+                    setStoryData(updatedData);
+                }
+            } else {
+                throw new Error('Failed to generate new image');
+            }
+        } catch (error) {
+            console.error('Error re-rolling image:', error);
+            setPageImageStatus(prev => ({ ...prev, [pageId]: 'error' }));
+            
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            if (errorMessage.includes('API key') || errorMessage.includes('Unauthorized')) {
+                toast.error('Image generation unavailable', {
+                    description: 'OpenAI API key is invalid or missing.',
+                });
+            } else {
+                toast.error('Failed to generate new image', {
+                    description: errorMessage
+                });
+            }
+        }
+    }, [generatedStoryId]);
 
     return (
         <div className="flex flex-col px-6 pb-8 justify-center">
@@ -458,13 +556,29 @@ export function ReviewStep() {
 
                                 {/* Image or placeholder */}
                                 {page.chosenImage ? (
-                                    <div className="mt-4">
+                                    <div className="mt-4 relative group">
                                         <img
                                             src={page.chosenImage.secureUrl}
                                             alt={`Page ${index + 1} illustration`}
                                             className="w-full rounded-lg shadow-md"
                                             loading="lazy"
                                         />
+                                        {/* Re-roll button */}
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => handleRerollImage(page.id, page.illustrationPrompt || '')}
+                                            disabled={pageImageStatus[page.id] === 'generating'}
+                                            className="absolute bottom-4 right-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200 bg-white/90 hover:bg-white shadow-lg"
+                                            title="Generate a new version of this image"
+                                        >
+                                            {pageImageStatus[page.id] === 'generating' ? (
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                                <RefreshCw className="w-4 h-4" />
+                                            )}
+                                            <span className="ml-1 hidden sm:inline">Re-roll</span>
+                                        </Button>
                                     </div>
                                 ) : (
                                     <div className="mt-4 aspect-[2/3] bg-gray-200 rounded-lg flex items-center justify-center">

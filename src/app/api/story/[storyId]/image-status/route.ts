@@ -12,29 +12,20 @@ export async function GET(req: NextRequest, props: { params: Promise<{ storyId: 
 
         const { storyId } = params;
 
-        // Get story with pages and image status
+        // Get story with pages and images
         const story = await prisma.story.findUnique({
             where: { 
                 id: storyId,
                 userId 
             },
-            select: {
-                id: true,
-                status: true,
+            include: {
                 pages: {
-                    select: {
-                        id: true,
-                        index: true,
-                        chosenImageId: true,
-                        variants: {
-                            select: {
-                                id: true,
-                                isChosen: true,
-                                secureUrl: true,
-                            }
-                        }
+                    include: {
+                        chosenImage: true
                     },
-                    orderBy: { index: 'asc' }
+                    orderBy: {
+                        index: 'asc'
+                    }
                 }
             }
         });
@@ -45,25 +36,26 @@ export async function GET(req: NextRequest, props: { params: Promise<{ storyId: 
 
         // Calculate image generation status
         const totalPages = story.pages.length;
-        const pagesWithImages = story.pages.filter(page => 
-            page.chosenImageId || page.variants.some(v => v.isChosen)
-        ).length;
+        const pagesWithImages = story.pages.filter(page => page.chosenImage).length;
+        const allImagesGenerated = totalPages === pagesWithImages;
 
-        const imageStatus = {
+        // Map page statuses
+        const pageStatuses = story.pages.map(page => ({
+            pageId: page.id,
+            index: page.index,
+            hasImage: !!page.chosenImage,
+            imageUrl: page.chosenImage?.secureUrl || null,
+            imageVariantId: page.chosenImage?.id || null,
+        }));
+
+        return NextResponse.json({
+            storyId: story.id,
+            status: story.status,
             totalPages,
-            completedPages: pagesWithImages,
-            pendingPages: totalPages - pagesWithImages,
-            progress: totalPages > 0 ? Math.round((pagesWithImages / totalPages) * 100) : 0,
-            isComplete: pagesWithImages === totalPages,
-            pages: story.pages.map(page => ({
-                id: page.id,
-                index: page.index,
-                hasImage: !!(page.chosenImageId || page.variants.some(v => v.isChosen)),
-                imageUrl: page.variants.find(v => v.isChosen)?.secureUrl || null
-            }))
-        };
-
-        return NextResponse.json(imageStatus);
+            pagesWithImages,
+            allImagesGenerated,
+            pageStatuses,
+        });
     } catch (error) {
         console.error('Error checking image status:', error);
         const errorMessage = error instanceof Error ? error.message : 'Internal server error';

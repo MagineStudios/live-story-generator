@@ -12,11 +12,8 @@ export async function GET(
             return NextResponse.json({ error: 'Story ID is required' }, { status: 400 });
         }
 
-        // Get the current authenticated user
+        // Get the current authenticated user (optional for public viewing)
         const { userId } = await auth();
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
 
         // Get the story data with chosen images
         const story = await prisma.story.findUnique({
@@ -54,10 +51,9 @@ export async function GET(
             return NextResponse.json({ error: 'Story not found' }, { status: 404 });
         }
 
-        // Security check - only allow access to own stories or public stories
-        if (story.userId && story.userId !== userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        // Stories are public by default - anyone with the link can view
+        // Only include editing capabilities if the user owns the story
+        const canEdit = userId && story.userId === userId;
 
         // Calculate progress based on number of pages vs expected
         const expectedPages = 5; // As per your requirement
@@ -67,7 +63,8 @@ export async function GET(
 
         return NextResponse.json({
             ...story,
-            progress: progress
+            progress: progress,
+            canEdit: canEdit // Include edit permission flag
         });
     } catch (error) {
         console.error('Error fetching story:', error);

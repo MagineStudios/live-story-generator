@@ -247,21 +247,31 @@ export default function StoryPage() {
                         {/* Story illustration */}
                         <div className="md:w-1/2">
                             {currentPageContent.chosenImage ? (
-                                <img
-                                    src={currentPageContent.chosenImage.secureUrl}
-                                    alt={`Illustration for page ${currentPage + 1}`}
-                                    className="w-full h-auto rounded-lg shadow-lg object-cover"
-                                    width={currentPageContent.chosenImage.width}
-                                    height={currentPageContent.chosenImage.height}
-                                    onError={(e) => {
-                                        // Fallback if image fails to load
-                                        console.error('Image failed to load:', currentPageContent.chosenImage?.secureUrl);
-                                        e.currentTarget.src = '/assets/placeholder-image.jpg';
-                                    }}
-                                />
+                                <div className="relative w-full aspect-[2/3] rounded-lg overflow-hidden shadow-lg">
+                                    <img
+                                        src={currentPageContent.chosenImage.secureUrl}
+                                        alt={`Illustration for page ${currentPage + 1}`}
+                                        className="w-full h-full object-cover"
+                                        width={currentPageContent.chosenImage.width}
+                                        height={currentPageContent.chosenImage.height}
+                                        loading={currentPage === 0 ? "eager" : "lazy"}
+                                        onError={(e) => {
+                                            // Fallback if image fails to load
+                                            console.error('Image failed to load:', currentPageContent.chosenImage?.secureUrl);
+                                            const target = e.target as HTMLImageElement;
+                                            target.src = 'https://via.placeholder.com/1024x1536?text=Image+Loading+Error';
+                                        }}
+                                    />
+                                </div>
                             ) : (
-                                <div className="bg-gray-100 w-full aspect-[2/3] rounded-lg flex items-center justify-center">
-                                    <p className="text-gray-500">No illustration available</p>
+                                <div className="bg-gradient-to-br from-blue-50 to-purple-50 w-full aspect-[2/3] rounded-lg flex flex-col items-center justify-center shadow-inner">
+                                    <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-3" />
+                                    <p className="text-gray-600 text-center">
+                                        Illustration is being generated...
+                                    </p>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        This may take a moment
+                                    </p>
                                 </div>
                             )}
                         </div>
