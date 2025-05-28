@@ -1,10 +1,4 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "npm run vercel-build",
-  "env": {
-    "OPENAI_API_KEY": "@openai_api_key",
-    "OPENAI_ORG_ID": "@openai_org_id",
-    "DATABASE_URL": "@database_url",
-    "DATABASE_URL_UNPOOLED": "@database_url_unpooled"
-  }
+  "buildCommand": "npm run vercel-build"
 }
