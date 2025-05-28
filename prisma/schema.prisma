@@ -218,8 +218,10 @@ model StoryPage {
   videoTasks    VideoTask[]    @relation("PageVideoTasks")
 
   // New fields for the review & edit functionality
-  editedText   String?  @db.Text // User-edited version of the text
-  microprompts String[] // Array of microprompts used for image remixing
+  editedText         String?  @db.Text // User-edited version of the text
+  microprompts       String[] // Array of microprompts used for image remixing
+  illustrationPrompt String?  @db.Text // Full illustration prompt with all character descriptors and style info
+  imagePrompt        String?  @db.Text // Actual prompt sent to image generation API (may be modified/shortened)
 }
 
 model ImageVariant {

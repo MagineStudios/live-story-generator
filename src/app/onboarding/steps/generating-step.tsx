@@ -179,7 +179,7 @@ export function GeneratingStep() {
                             </Button>
 
                             <p className="text-sm text-gray-500 mt-4">
-                                This will create a 5-page story with custom illustrations
+                                This will create a 5-page story with illustration prompts (images temporarily disabled for testing)
                             </p>
                         </motion.div>
                     ) : (

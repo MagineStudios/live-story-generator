@@ -30,6 +30,8 @@ export async function GET(
                         text: true,
                         index: true,
                         microprompts: true,
+                        illustrationPrompt: true,
+                        imagePrompt: true,
                         chosenImageId: true,
                     },
                 },
