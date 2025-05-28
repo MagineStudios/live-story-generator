@@ -54,6 +54,7 @@ export default function Review() {
     const [displayedText, setDisplayedText] = useState('');
     const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
     const [currentJokeIndex, setCurrentJokeIndex] = useState(-1);
+    const [isShowingJoke, setIsShowingJoke] = useState(false);
     const { generatedStoryId, goToNextStep } = useOnboarding();
     const pollingStartTime = useRef<number | null>(null);
     const pollingInterval = useRef<NodeJS.Timeout | null>(null);
@@ -97,14 +98,26 @@ export default function Review() {
 
     // Animate text helper
     const animateText = (text: string) => {
-        if (animationRef.current) clearInterval(animationRef.current);
+        if (animationRef.current) {
+            clearInterval(animationRef.current);
+            animationRef.current = null;
+        }
         setDisplayedText('');
         let idx = 0;
-        animationRef.current = setInterval(() => {
-            setDisplayedText(text.slice(0, idx + 1));
-            idx++;
-            if (idx >= text.length && animationRef.current) clearInterval(animationRef.current);
-        }, 20);
+        
+        const animate = () => {
+            if (idx < text.length) {
+                setDisplayedText(text.slice(0, idx + 1));
+                idx++;
+            } else {
+                if (animationRef.current) {
+                    clearInterval(animationRef.current);
+                    animationRef.current = null;
+                }
+            }
+        };
+        
+        animationRef.current = setInterval(animate, 20);
     };
 
     // Get current page
@@ -156,23 +169,41 @@ export default function Review() {
         return `Page ${currentPage + 1} of ${totalPages} - ${currentStoryPage?.imageStatus === 'completed' ? "Looking great!" : "Creating magic..."} 📖`;
     };
 
-    // Update speech bubble text
+    // Update speech bubble text - separate logic for jokes
     useEffect(() => {
+        // Skip if we're showing jokes
+        if (isShowingJoke) return;
+        
+        // Only animate text for non-joke messages
         animateText(getSpeechMessage());
-    }, [isLoading, isPolling, pollingError, showSuccessAnimation, currentPage, storyPages, currentJokeIndex, totalPages, completedPages]);
+    }, [isLoading, isPolling, pollingError, showSuccessAnimation, currentPage, storyPages, totalPages, completedPages, isShowingJoke]);
+    
+    // Separate effect for joke animation - only runs when joke changes
+    useEffect(() => {
+        // Only animate if we're polling and have a valid joke index
+        if (isPolling && currentJokeIndex >= 0 && currentJokeIndex < waitingJokes.length) {
+            setIsShowingJoke(true);
+            animateText(waitingJokes[currentJokeIndex]);
+        } else {
+            setIsShowingJoke(false);
+        }
+    }, [currentJokeIndex, isPolling]); // Only trigger when joke index or polling state changes
 
     // Rotate through jokes while polling
     useEffect(() => {
+        let startJokes: NodeJS.Timeout;
+        
         if (isPolling) {
             // Reset joke index to trigger intro message
             setCurrentJokeIndex(-1);
+            setIsShowingJoke(false);
             
-            // Start joke rotation after intro (3 seconds)
-            const startJokes = setTimeout(() => {
+            // Start first joke after intro (3 seconds)
+            startJokes = setTimeout(() => {
                 const randomStart = Math.floor(Math.random() * waitingJokes.length);
                 setCurrentJokeIndex(randomStart);
                 
-                // Set up rotation every 8 seconds (gives plenty of time to read)
+                // Set up rotation for subsequent jokes
                 jokeIntervalRef.current = setInterval(() => {
                     setCurrentJokeIndex(prev => {
                         // Get a random joke that's different from the current one
@@ -182,25 +213,30 @@ export default function Review() {
                         } while (nextIndex === prev && waitingJokes.length > 1);
                         return nextIndex;
                     });
-                }, 8000);
+                }, 10000); // 10 seconds between jokes for comfortable reading
             }, 3000);
-            
-            return () => {
-                clearTimeout(startJokes);
-                if (jokeIntervalRef.current) {
-                    clearInterval(jokeIntervalRef.current);
-                    jokeIntervalRef.current = null;
-                }
-            };
         } else {
-            // Clear interval when not polling
+            // Clear everything when not polling
             if (jokeIntervalRef.current) {
                 clearInterval(jokeIntervalRef.current);
                 jokeIntervalRef.current = null;
             }
+            if (animationRef.current) {
+                clearInterval(animationRef.current);
+                animationRef.current = null;
+            }
             setCurrentJokeIndex(-1);
+            setIsShowingJoke(false);
         }
-    }, [isPolling, waitingJokes.length]);
+        
+        return () => {
+            if (startJokes) clearTimeout(startJokes);
+            if (jokeIntervalRef.current) {
+                clearInterval(jokeIntervalRef.current);
+                jokeIntervalRef.current = null;
+            }
+        };
+    }, [isPolling]); // Only depend on isPolling
     // Preload next image for smoother transitions
     useEffect(() => {
         if (currentPage < storyPages.length - 1) {
@@ -441,8 +477,17 @@ export default function Review() {
             clearInterval(pollingInterval.current);
             pollingInterval.current = null;
         }
+        if (jokeIntervalRef.current) {
+            clearInterval(jokeIntervalRef.current);
+            jokeIntervalRef.current = null;
+        }
+        if (animationRef.current) {
+            clearInterval(animationRef.current);
+            animationRef.current = null;
+        }
         setIsPolling(false);
         setCurrentJokeIndex(-1); // Reset joke index
+        setIsShowingJoke(false); // Reset joke flag
         if (error) {
             setPollingError(error);
         }
@@ -1008,7 +1053,7 @@ export default function Review() {
                                     className="border-[#4CAF50] text-[#4CAF50] hover:bg-[#4CAF50]/10 hover:scale-105 transition-all cursor-pointer"
                                 >
                                     <Shuffle className="w-4 h-4 mr-2" />
-                                    New Variant
+                                    Redo Image
                                 </Button>
                                 <Button 
                                     variant="outline" 

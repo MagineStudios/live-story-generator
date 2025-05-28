@@ -109,8 +109,7 @@ export async function POST(req: NextRequest) {
                 data: {
                     elementId: element.id,
                     // Basic defaults - user can edit later
-                    species: 'unknown',
-                    breed: null,
+                    breed: 'unknown',
                     furColor: null,
                     furStyle: null,
                     markings: null,
@@ -127,8 +126,7 @@ export async function POST(req: NextRequest) {
                     setting: null,
                     timeOfDay: null,
                     weather: null,
-                    mood: null,
-                    features: null,
+                    notable: null,
                 }
             });
         } else if (category === 'OBJECT') {
@@ -136,12 +134,11 @@ export async function POST(req: NextRequest) {
                 data: {
                     elementId: element.id,
                     // Basic defaults - user can edit later
-                    objectType: 'unknown',
+                    material: 'unknown',
                     primaryColor: null,
                     secondaryColor: null,
-                    material: null,
-                    size: null,
-                    features: null,
+                    details: null,
+                    accessories: null,
                 }
             });
         }

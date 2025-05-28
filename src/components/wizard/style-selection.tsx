@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { useOnboarding } from '@/lib/context/onboarding-provider';
+import { useStoryBuilder } from '@/lib/context/story-builder-context';
 import Image from 'next/image';
 import { Loader2 } from 'lucide-react';
 
