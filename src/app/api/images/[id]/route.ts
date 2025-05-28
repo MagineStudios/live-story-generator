@@ -56,7 +56,7 @@ export async function GET(
             publicId: image.publicId
         });
     } catch (error) {
-        console.error('Error fetching image:', error);
+        console.error('Error fetching images:', error);
         const errorMessage = error instanceof Error ? error.message : String(error);
         return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
