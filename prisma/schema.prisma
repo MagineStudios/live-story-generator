@@ -55,6 +55,7 @@ model User {
   ledger             CreditLedger[]
   myWorld            MyWorldElement[] // Added relation to user's personal elements
   onboardingSessions OnboardingSession[] @relation("UserOnboardingSessions")
+  likedStories       StoryLike[] // Stories liked by this user
 }
 
 model Story {
@@ -71,6 +72,9 @@ model Story {
   pdfUrl             String? // Generated PDF URL
   animationUrl       String? // Generated video URL if animation was requested
   musicUrl           String? // Generated/selected music URL if added
+  isPublic           Boolean             @default(false) // Whether the story is visible to the public
+  likesCount         Int                 @default(0) // Cached count of likes
+  viewsCount         Int                 @default(0) // Number of views
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   pages              StoryPage[]
@@ -78,6 +82,10 @@ model Story {
   musicTasks         MusicTask[]         @relation("StoryMusicTasks")
   storyElements      StoryElement[] // Elements used in this story
   onboardingSessions OnboardingSession[] @relation("StoryOnboardingSessions")
+  likes              StoryLike[] // Relation to likes
+  
+  @@index([isPublic, createdAt]) // Index for fetching public stories
+  @@index([userId, createdAt]) // Index for fetching user's stories
 }
 
 // New model for story elements
@@ -309,4 +317,18 @@ model CreditLedger {
   delta     Int
   reason    String
   createdAt DateTime @default(now())
+}
+
+// ---------- Social features ----------
+model StoryLike {
+  id        String   @id @default(cuid())
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  storyId   String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+  
+  @@unique([storyId, userId]) // Each user can only like a story once
+  @@index([storyId]) // Fast lookup of likes for a story
+  @@index([userId]) // Fast lookup of user's liked stories
 }

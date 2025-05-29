@@ -1,0 +1,253 @@
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { StoryCard } from './story-card';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2, Filter, TrendingUp, Clock, Heart, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface Story {
+  id: string;
+  title: string;
+  theme: string;
+  visualStyle: string;
+  styleName: string;
+  coverImage: string | null;
+  excerpt: string;
+  likesCount: number;
+  viewsCount: number;
+  pageCount: number;
+  isLikedByUser: boolean;
+  authorId: string | null;
+  createdAt: string;
+}
+
+const STYLES = [
+  { value: 'all', label: 'All Styles' },
+  { value: 'cartoonish', label: 'Cartoonish' },
+  { value: 'pixar', label: 'Pixar/Disney' },
+  { value: 'watercolor', label: 'Watercolor' },
+  { value: 'storybook', label: 'Storybook' },
+  { value: 'minimalist', label: 'Minimalist' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'createdAt', label: 'Latest', icon: Clock },
+  { value: 'likes', label: 'Most Liked', icon: Heart },
+  { value: 'views', label: 'Most Viewed', icon: TrendingUp },
+];
+
+export function CommunityGallery() {
+  const [stories, setStories] = useState<Story[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [styleFilter, setStyleFilter] = useState('all');
+  const [totalCount, setTotalCount] = useState(0);
+
+  const fetchStories = useCallback(async (pageNum: number, reset: boolean = false) => {
+    try {
+      const params = new URLSearchParams({
+        page: pageNum.toString(),
+        limit: '12',
+        sortBy,
+        sortOrder: 'desc',
+        ...(styleFilter !== 'all' && { style: styleFilter })
+      });
+      
+      const response = await fetch(`/api/stories/public?${params}`);
+      const data = await response.json();
+      
+      if (reset) {
+        setStories(data.stories);
+      } else {
+        setStories(prev => [...prev, ...data.stories]);
+      }
+      
+      setTotalCount(data.pagination.totalCount);
+      setHasMore(pageNum < data.pagination.totalPages);
+    } catch (error) {
+      console.error('Error fetching stories:', error);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [sortBy, styleFilter]);
+
+  // Initial load and filter/sort changes
+  useEffect(() => {
+    setLoading(true);
+    setPage(1);
+    fetchStories(1, true);
+  }, [fetchStories]);
+
+  // Load more
+  const loadMore = () => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchStories(nextPage);
+  };
+
+  // Track views when story is opened
+  useEffect(() => {
+    const trackView = async (storyId: string) => {
+      try {
+        await fetch(`/api/stories/${storyId}/view`, { method: 'POST' });
+      } catch (error) {
+        // Silently fail - view tracking is not critical
+      }
+    };
+
+    // Listen for story view events
+    const handleStoryView = (event: CustomEvent) => {
+      trackView(event.detail.storyId);
+    };
+
+    window.addEventListener('story-view' as any, handleStoryView as any);
+    return () => window.removeEventListener('story-view' as any, handleStoryView as any);
+  }, []);
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { duration: 0.4 }
+    }
+  };
+
+  return (
+    <div id="community">
+      {/* Filters and Sort */}
+      <div className="mb-8 flex flex-col sm:flex-row gap-4 items-center justify-between">
+        <div className="flex items-center gap-4 w-full sm:w-auto">
+          {/* Style Filter */}
+          <Select value={styleFilter} onValueChange={setStyleFilter}>
+            <SelectTrigger className="w-[180px]">
+              <Filter className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Filter by style" />
+            </SelectTrigger>
+            <SelectContent>
+              {STYLES.map(style => (
+                <SelectItem key={style.value} value={style.value}>
+                  {style.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Sort Options */}
+          <div className="flex gap-2">
+            {SORT_OPTIONS.map(option => {
+              const Icon = option.icon;
+              return (
+                <Button
+                  key={option.value}
+                  variant={sortBy === option.value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSortBy(option.value)}
+                  className={cn(
+                    "transition-all",
+                    sortBy === option.value && "bg-purple-600 hover:bg-purple-700"
+                  )}
+                >
+                  <Icon className="w-4 h-4 mr-1" />
+                  {option.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Story Count */}
+        <div className="text-sm text-gray-600">
+          {totalCount > 0 && (
+            <span>{totalCount} {totalCount === 1 ? 'story' : 'stories'} found</span>
+          )}
+        </div>
+      </div>
+
+      {/* Loading State */}
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-4" />
+            <p className="text-gray-600">Loading magical stories...</p>
+          </div>
+        </div>
+      ) : stories.length === 0 ? (
+        <div className="text-center py-16">
+          <Sparkles className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">No stories found</h3>
+          <p className="text-gray-500">Be the first to create a story with this style!</p>
+        </div>
+      ) : (
+        <>
+          {/* Story Grid */}
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+          >
+            <AnimatePresence>
+              {stories.map((story) => (
+                <motion.div
+                  key={story.id}
+                  variants={itemVariants}
+                  layout
+                >
+                  <StoryCard story={story} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
+
+          {/* Load More Button */}
+          {hasMore && (
+            <div className="mt-12 text-center">
+              <Button
+                onClick={loadMore}
+                disabled={loadingMore}
+                variant="outline"
+                size="lg"
+                className="min-w-[200px]"
+              >
+                {loadingMore ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Loading more...
+                  </>
+                ) : (
+                  'Load More Stories'
+                )}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
