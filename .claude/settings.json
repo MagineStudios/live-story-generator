@@ -1,0 +1,17 @@
+{
+  "theme": "dark",
+  "verbose": true,
+  "autoUpdaterStatus": "enabled",
+  "preferredNotifChannel": "terminal_bell",
+  "permissions": {
+    "allow": [
+      "Bash(command:npm run *)",
+      "Bash(command:npx *)",
+      "Bash(command:git *)",
+      "WebFetch(domain:docs.anthropic.com)"
+    ],
+    "deny": [
+      "Bash(command:rm -rf /*)"
+    ]
+  }
+}
