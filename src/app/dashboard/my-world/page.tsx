@@ -93,7 +93,7 @@ export default function MyWorldPage() {
         </p>
       </div>
 
-      <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="w-full">
+      <Tabs value={selectedCategory} onValueChange={(value) => setSelectedCategory(value as ElementCategory)} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           {ELEMENT_CATEGORIES.map((category) => (
             <TabsTrigger key={category.value} value={category.value}>

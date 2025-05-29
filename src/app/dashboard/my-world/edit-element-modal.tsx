@@ -39,8 +39,8 @@ export function EditElementModal({ element, isOpen, onClose, onSave }: EditEleme
       });
       
       // Load existing attributes based on category
-      const attributeKey = `${element.category.toLowerCase()}Attributes`;
-      const elementAttributes = element[attributeKey] as Record<string, any>;
+      const attributeKey = `${element.category.toLowerCase()}Attributes` as keyof MyWorldElement;
+      const elementAttributes = element[attributeKey] as Record<string, any> | undefined;
       if (elementAttributes) {
         // Remove system fields like id, elementId, createdAt, updatedAt
         const { id, elementId, createdAt, updatedAt, ...cleanAttributes } = elementAttributes;
@@ -89,7 +89,7 @@ export function EditElementModal({ element, isOpen, onClose, onSave }: EditEleme
       const { element: updatedElement } = await response.json();
       
       // Merge with attributes for the callback
-      const attributeKey = `${element.category.toLowerCase()}Attributes`;
+      const attributeKey = `${element.category.toLowerCase()}Attributes` as keyof MyWorldElement;
       onSave({
         ...updatedElement,
         [attributeKey]: attributes,

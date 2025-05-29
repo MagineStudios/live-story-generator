@@ -31,7 +31,7 @@ export async function GET(req: NextRequest, context: any) {
         }
 
         // Transform the element to have attributes in the expected format
-        const attributeKey = `${element.category.toLowerCase()}Attributes`;
+        const attributeKey = `${element.category.toLowerCase()}Attributes` as keyof typeof element;
         const attributes = element[attributeKey];
         
         const transformedElement = {
