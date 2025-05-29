@@ -96,6 +96,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     // Determine or generate a tempId for guest sessions only
     const [tempId, setTempId] = useState<string | null>(null);
     const [shouldResetAfterInit, setShouldResetAfterInit] = useState(false);
+    const [isResetting, setIsResetting] = useState(false); // Add flag to track reset state
     useEffect(() => {
         if (userId) {
             // If user logs in, clear tempId and local storage
@@ -399,14 +400,20 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     // Navigation: go to the next step
     const goToNextStep = useCallback(() => {
+        // Don't navigate during reset
+        if (isResetting) {
+            console.log('Navigation blocked during reset');
+            return;
+        }
+        
         const next = Math.min(currentStep + 1, MAX_STEPS - 1);
         console.log(`goToNextStep called: current=${currentStep}, next=${next}`);
         
         // Special check: Can only go to step 10 from step 9
         if (next === 10 && currentStep !== 9) {
             console.error(`BLOCKED: Attempting to jump to step 10 from step ${currentStep}. Must go through step 9 first!`);
-            // Force to step 9 instead
-            _setCurrentStep(9);
+            // Don't force navigation during this edge case
+            return;
             
             setTimeout(() => {
                 const url = new URL(window.location.href);
@@ -436,7 +443,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 }).catch(console.error);
             }
         }
-    }, [currentStep, userId]);
+    }, [currentStep, userId, isResetting]);
 
     const goToPrevStep = useCallback(() => {
         // Use browser back for better history management
@@ -732,6 +739,14 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     const resetOnboarding = useCallback(async () => {
         console.log('resetOnboarding called');
         
+        // Prevent multiple resets
+        if (isResetting) {
+            console.log('Reset already in progress, skipping');
+            return;
+        }
+        
+        setIsResetting(true);
+        
         // Clear localStorage FIRST for all users
         localStorage.removeItem('magicstory_onboarding');
         localStorage.removeItem('magicstory_tempId');
@@ -779,7 +794,12 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         newUrl.searchParams.set('step', '1');
         newUrl.searchParams.delete('reset');
         window.history.replaceState({ step: 1 }, '', newUrl.toString());
-    }, [userId]);
+        
+        // Reset complete
+        setTimeout(() => {
+            setIsResetting(false);
+        }, 100);
+    }, [userId, isResetting]);
 
     // Create/generate the story based on current selections
     const createStory = useCallback(async (): Promise<{ id: string; status: string } | undefined> => {

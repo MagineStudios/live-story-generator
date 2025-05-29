@@ -178,7 +178,10 @@ export default function StoryPage() {
                             Go Home
                         </Button>
                         <Button
-                            onClick={() => router.push('/onboarding?reset=true')}
+                            onClick={() => {
+                                // Use window.location to ensure a full page reload and reset
+                                window.location.href = '/onboarding?reset=true';
+                            }}
                             className="bg-[#4CAF50] hover:bg-[#43a047] text-white"
                         >
                             Create New Story
@@ -347,7 +350,10 @@ export default function StoryPage() {
             <div className="mt-8 flex justify-center space-x-4">
                 <Button
                     variant="outline"
-                    onClick={() => router.push('/onboarding?reset=true')}
+                    onClick={() => {
+                        // Use window.location to ensure a full page reload and reset
+                        window.location.href = '/onboarding?reset=true';
+                    }}
                     className="border-2 border-[#4CAF50] text-[#4CAF50] hover:bg-[#4CAF50]/10"
                 >
                     Create Another Story
