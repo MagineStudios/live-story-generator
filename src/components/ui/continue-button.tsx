@@ -25,13 +25,16 @@ export function ContinueButton({
       disabled={disabled || loading}
       variant={variant}
       className={cn(
-        'min-h-[48px] min-w-[120px] text-base font-medium px-6',
+        'min-h-[52px] min-w-[140px] text-base font-semibold px-8',
+        'rounded-full', // More rounded
+        'bg-[#4CAF50] hover:bg-[#43a047] text-white', // Green by default
         'transition-all duration-200',
         'hover:scale-105 hover:shadow-lg',
-        'active:scale-95',
-        'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary',
-        'disabled:hover:scale-100 disabled:hover:shadow-none',
+        'active:scale-95 active:bg-[#3d943f]',
+        'focus:outline-none focus:ring-4 focus:ring-[#4CAF50]/30',
+        'disabled:bg-gray-300 disabled:text-gray-500 disabled:hover:scale-100 disabled:hover:shadow-none',
         'cursor-pointer disabled:cursor-not-allowed',
+        'shadow-md', // Add default shadow
         className
       )}
     >

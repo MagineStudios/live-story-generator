@@ -203,7 +203,7 @@ export function CharactersStep() {
                                 .filter((id: string) => id); // Filter out any undefined/null ids
                             
                             // Use a Set to ensure no duplicates
-                            const uniqueSelected = [...new Set(initialSelected)];
+                            const uniqueSelected = [...new Set(initialSelected)] as string[];
                             setSelectedCharacters(uniqueSelected);
 
                             animateText("Welcome back! Who should star in today's story?");

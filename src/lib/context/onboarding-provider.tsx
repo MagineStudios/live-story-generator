@@ -93,25 +93,9 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     const { userId } = useAuth();  // Clerk user ID (if logged in)
     const MAX_STEPS = 11;          // Total steps: 0-11 in the wizard
 
-    // We'll handle reset after the component is fully mounted and resetOnboarding is defined
-
     // Determine or generate a tempId for guest sessions only
     const [tempId, setTempId] = useState<string | null>(null);
-    const [shouldResetOnMount, setShouldResetOnMount] = useState(false);
-    
-    // Check for reset parameter on mount
-    useEffect(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const shouldReset = urlParams.get('reset') === 'true';
-        
-        if (shouldReset) {
-            setShouldResetOnMount(true);
-            // Remove the reset parameter from URL
-            const newUrl = new URL(window.location.href);
-            newUrl.searchParams.delete('reset');
-            window.history.replaceState({}, '', newUrl.toString());
-        }
-    }, []); // Empty dependency array for mount only
+    const [shouldResetAfterInit, setShouldResetAfterInit] = useState(false);
     useEffect(() => {
         if (userId) {
             // If user logs in, clear tempId and local storage
@@ -135,10 +119,18 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         const hasResetParam = urlParams.get('reset') === 'true';
         const stepParam = urlParams.get('step');
         
-        // If reset parameter is present, don't load saved data
+        // If reset parameter is present, mark for reset after initialization
         if (hasResetParam) {
-            console.log('Reset parameter detected, skipping data load');
-            _setCurrentStep(1); // Start at step 1
+            console.log('Reset parameter detected, will reset after initialization');
+            // Remove the reset parameter from URL immediately
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('reset');
+            newUrl.searchParams.set('step', '1');
+            window.history.replaceState({ step: 1 }, '', newUrl.toString());
+            
+            // Mark for reset after initialization
+            setShouldResetAfterInit(true);
+            _setCurrentStep(1); // Set initial step
             setIsInitializing(false);
             return;
         }
@@ -740,7 +732,11 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     const resetOnboarding = useCallback(async () => {
         console.log('resetOnboarding called');
         
-        // Clear database for logged-in users FIRST
+        // Clear localStorage FIRST for all users
+        localStorage.removeItem('magicstory_onboarding');
+        localStorage.removeItem('magicstory_tempId');
+        
+        // Clear database for logged-in users
         if (userId) {
             try {
                 const response = await fetch('/api/onboarding/reset', {
@@ -759,13 +755,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             }
         }
         
-        // Clear localStorage for guests
-        if (!userId) {
-            localStorage.removeItem('magicstory_onboarding');
-            localStorage.removeItem('magicstory_tempId');
-        }
-        
-        // Reset all state
+        // Reset all state immediately
         _setStoryGoal([]);
         _setTone([]);
         setSelectedElements([]);
@@ -782,9 +772,13 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         setIsGeneratingStory(false);
         setIsLoadingSuggestions(false);
         setIsAnalyzingImage(false);
+        setIsInitializing(false);
 
-        // Force a clean navigation to step 1
-        window.location.href = '/onboarding?step=1';
+        // Update URL to step 1 without reload
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.set('step', '1');
+        newUrl.searchParams.delete('reset');
+        window.history.replaceState({ step: 1 }, '', newUrl.toString());
     }, [userId]);
 
     // Create/generate the story based on current selections
@@ -988,31 +982,6 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         resetOnboarding,
     ]);
 
-    // Handle reset after component is fully initialized
-    useEffect(() => {
-        if (shouldResetOnMount && !isInitializing) {
-            resetOnboarding();
-            setShouldResetOnMount(false);
-        }
-    }, [shouldResetOnMount, isInitializing, resetOnboarding]);
-    
-    // Check for reset parameter
-    useEffect(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const shouldReset = urlParams.get('reset') === 'true';
-        
-        if (shouldReset && !isInitializing) {
-            console.log('Reset parameter detected, triggering reset');
-            // Remove the reset parameter from URL
-            const newUrl = new URL(window.location.href);
-            newUrl.searchParams.delete('reset');
-            window.history.replaceState({}, '', newUrl.toString());
-            
-            // Trigger reset
-            resetOnboarding();
-        }
-    }, [isInitializing, resetOnboarding]);
-
     // **Migration after signup**: if the user has just signed up (userId now exists), we have guest data, and a story has been generated, trigger migration.
     useEffect(() => {
         if (userId && tempId && generatedStoryId) {
@@ -1045,6 +1014,15 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             migrateData();
         }
     }, [userId, tempId, generatedStoryId, storyGoal, tone]);
+
+    // Handle reset after initialization
+    useEffect(() => {
+        if (shouldResetAfterInit && !isInitializing) {
+            console.log('Executing reset after initialization');
+            setShouldResetAfterInit(false); // Prevent multiple resets
+            resetOnboarding();
+        }
+    }, [shouldResetAfterInit, isInitializing, resetOnboarding]);
 
     return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;
 }

@@ -3,7 +3,6 @@
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Plus } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 interface CreateStoryButtonProps {
   variant?: 'default' | 'secondary' | 'outline' | 'ghost';
@@ -20,11 +19,16 @@ export function CreateStoryButton({
   children = 'Create New Story',
   showIcon = true,
 }: CreateStoryButtonProps) {
-  const router = useRouter();
   
   const handleCreateStory = () => {
-    // Navigate to onboarding with reset parameter to ensure clean start
-    router.push('/onboarding?reset=true&step=1');
+    // Clear all onboarding data from localStorage first
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('magicstory_onboarding');
+      localStorage.removeItem('magicstory_tempId');
+    }
+    
+    // Force a hard navigation to ensure clean state
+    window.location.href = '/onboarding?reset=true&step=1';
   };
   
   return (

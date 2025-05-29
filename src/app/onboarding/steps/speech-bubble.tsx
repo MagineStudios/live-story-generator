@@ -24,9 +24,9 @@ export function SpeechBubble({
                                  heightClass,
                                  position = 'right',
                              }: SpeechBubbleProps) {
-    // Animation classes using Tailwind
+    // Animation classes using Tailwind - simplified for smoother transition
     const animationClass = animateIn 
-        ? 'animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-300' 
+        ? 'animate-in fade-in duration-200' 
         : '';
 
     // Position-specific classes and bubble-tail styles

@@ -53,8 +53,10 @@ export function OnboardingWizard() {
         return () => clearTimeout(focusTimer);
     }, [currentStep, generatedStoryId]);
 
-    // Determine if the back button should be disabled
+    // Determine if the back button should be disabled or hidden
     const backDisabled = currentStep === 0 || isGeneratingStory;
+    // Hide on step 0, and on steps 8+ only if story generation has started
+    const hideBackButton = currentStep === 0 || (currentStep === 8 && isGeneratingStory) || currentStep >= 9;
 
     // Calculate progress percentage for progress bar
     const totalSteps = 11;  // 0 through 10 (with the new steps)
@@ -82,21 +84,23 @@ export function OnboardingWizard() {
                     className="flex flex-col gap-2 px-4 sm:px-6 py-3 animate-in fade-in slide-in-from-top-2 duration-300"
                 >
                     <div className="flex items-center">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={goToPrevStep}
-                            disabled={backDisabled}
-                            aria-label="Go to previous step"
-                            className={cn(
-                                'mr-3 cursor-pointer transition-all min-w-[44px] min-h-[44px]',
-                                backDisabled 
-                                    ? 'opacity-0' 
-                                    : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300'
-                            )}
-                        >
-                            <ArrowLeft className="h-6 w-6" />
-                        </Button>
+                        {!hideBackButton ? (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={goToPrevStep}
+                                disabled={backDisabled}
+                                aria-label="Go to previous step"
+                                className={cn(
+                                    'mr-3 cursor-pointer transition-all min-w-[44px] min-h-[44px]',
+                                    'text-gray-700 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300'
+                                )}
+                            >
+                                <ArrowLeft className="h-6 w-6" />
+                            </Button>
+                        ) : (
+                            <div className="w-[44px] h-[44px] mr-3" /> // Spacer to maintain layout
+                        )}
 
                         {/* Progress bar */}
                         <div className="flex-1" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progressPercent)} aria-label="Onboarding progress">
@@ -129,10 +133,13 @@ export function OnboardingWizard() {
             <AnimatePresence mode="wait">
                 <motion.div
                     key={`step-${currentStep}`}
-                    initial={{ opacity: 0, x: 20 }}
+                    initial={{ opacity: 0, x: currentStep === 9 ? 0 : 20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    exit={{ opacity: 0, x: currentStep === 8 ? 0 : -20 }}
+                    transition={{ 
+                        duration: currentStep === 9 || currentStep === 8 ? 0.15 : 0.2, 
+                        ease: "easeInOut" 
+                    }}
                     className="flex-1 flex flex-col pt-0"
                     role="main"
                     aria-label={`Step ${currentStep + 1} of ${totalSteps}`}
