@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
 import { Laugh, Heart, Star, Sparkles, BookOpen, Zap } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { ContinueButton } from '@/components/ui/continue-button';
 import { SpeechBubble } from './speech-bubble';
 import { motion } from 'framer-motion';
 
@@ -58,7 +59,7 @@ export function ToneStep() {
   }, []);
 
   return (
-      <div className="flex flex-col px-6 pb-8 justify-center">
+      <div className="flex flex-col px-4 sm:px-6 pb-8 justify-center">
         <div className="mb-6">
           <SpeechBubble
               message={displayedText}
@@ -79,6 +80,8 @@ export function ToneStep() {
                 }
               }
             }}
+            role="group"
+            aria-label="Select story tone options"
         >
           {TONE_OPTIONS.map(({ value, label, Icon, color }) => {
             const isSelected = selectedTones.includes(value);
@@ -102,25 +105,50 @@ export function ToneStep() {
                         setTone(newSelected);
                         if (!wasSelected) animateText(toneMap[value] || fallback);
                       }}
-                      className={`flex items-center justify-between px-4 py-3 rounded-2xl transition-all cursor-pointer ${
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          const wasSelected = isSelected;
+                          const newSelected = wasSelected
+                              ? selectedTones.filter(v => v !== value)
+                              : [...selectedTones, value];
+                          setSelectedTones(newSelected);
+                          setTone(newSelected);
+                          if (!wasSelected) animateText(toneMap[value] || fallback);
+                        }
+                      }}
+                      role="checkbox"
+                      aria-checked={isSelected}
+                      aria-label={`${label} tone for your story`}
+                      tabIndex={0}
+                      className={cn(
+                          'flex items-center justify-between px-4 py-3 rounded-2xl transition-all cursor-pointer min-h-[44px]',
                           isSelected
                               ? 'bg-[#E6F4FA] border border-[#00ABF0]/30'
-                              : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
-                      }`}
+                              : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 active:bg-gray-200',
+                          'focus:outline-none focus:ring-2 focus:ring-[#00ABF0]/20'
+                      )}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className={`flex-shrink-0 w-9 h-9 rounded-md flex items-center justify-center ${isSelected ? color : 'bg-gray-100 text-gray-600'}`}>
+                      <div className={cn(
+                          'flex-shrink-0 min-w-[44px] min-h-[44px] rounded-md flex items-center justify-center transition-all',
+                          isSelected ? color : 'bg-gray-100 text-gray-600'
+                      )}>
                         <Icon className="w-5 h-5" />
                       </div>
-                      <span className={`font-medium ${isSelected ? 'text-[#00ABF0]' : 'text-gray-800'}`}>
+                      <span className={cn(
+                          'font-medium transition-all',
+                          isSelected ? 'text-[#00ABF0]' : 'text-gray-800'
+                      )}>
                                         {label}
                                     </span>
                     </div>
 
                     {/* Checkbox */}
-                    <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center transition-all ${
+                    <div className={cn(
+                        'min-w-[44px] min-h-[44px] flex-shrink-0 rounded-full flex items-center justify-center transition-all',
                         isSelected ? 'bg-[#00ABF0]' : 'bg-white border border-gray-300'
-                    }`}>
+                    )}>
                       {isSelected && (
                           <motion.svg
                               initial={{ scale: 0 }}
@@ -153,20 +181,14 @@ export function ToneStep() {
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.5, duration: 0.5 }}
         >
-          <Button
+          <ContinueButton
               onClick={() => {
                 setTone(selectedTones);
                 goToNextStep();
               }}
               disabled={selectedTones.length === 0}
-              className={`w-full py-6 text-lg font-medium rounded-full transition-all duration-300 ${
-                  selectedTones.length === 0
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-[#4CAF50] hover:bg-[#43a047] text-white shadow-md hover:shadow-lg'
-              }`}
-          >
-            Continue
-          </Button>
+              className="w-full"
+          />
         </motion.div>
       </div>
   );

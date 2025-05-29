@@ -2,6 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { CreateStoryButton } from '@/components/ui/create-story-button';
+import { cn } from '@/lib/utils';
 import { SpeechBubble } from './speech-bubble';
 import { PartyPopper, BookOpen, Share2, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -50,7 +52,7 @@ export function FinishStep() {
     }, [generatedStoryId]);
 
     return (
-        <div className="flex flex-col px-6 pb-8 justify-center">
+        <div className="flex flex-col px-4 sm:px-6 pb-8 justify-center">
             <div className="mb-6">
                 <SpeechBubble
                     message={loading ? "Just getting your story ready..." :
@@ -106,11 +108,12 @@ export function FinishStep() {
                             <Button
                                 onClick={() => router.push(`/story/${generatedStoryId}`)}
                                 disabled={!generatedStoryId || !!error}
-                                className={`w-full py-6 text-lg font-medium rounded-full 
-                                    ${!generatedStoryId || error ?
-                                    'bg-gray-300 text-gray-500 cursor-not-allowed' :
-                                    'bg-[#4CAF50] hover:bg-[#43a047] text-white cursor-pointer shadow-md hover:shadow-lg'} 
-                                    transition-all duration-300`}
+                                className={cn(
+                                    'w-full py-6 text-lg font-medium rounded-full transition-all duration-300',
+                                    !generatedStoryId || error
+                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                        : 'bg-[#4CAF50] hover:bg-[#43a047] text-white cursor-pointer shadow-md hover:shadow-lg active:bg-[#3d943f] focus:outline-none focus:ring-4 focus:ring-[#4CAF50]/30'
+                                )}
                             >
                                 <BookOpen className="w-5 h-5 mr-2" />
                                 Read Your Story
@@ -126,11 +129,12 @@ export function FinishStep() {
                                 variant="outline"
                                 onClick={() => router.push(`/story/${generatedStoryId}/share`)}
                                 disabled={!generatedStoryId || !!error}
-                                className={`w-full py-6 text-lg font-medium rounded-full 
-                                    ${!generatedStoryId || error ?
-                                    'border-2 border-gray-300 text-gray-500 cursor-not-allowed' :
-                                    'border-2 border-[#4CAF50] text-[#4CAF50] hover:bg-[#4CAF50]/10 cursor-pointer'} 
-                                    transition-all duration-300`}
+                                className={cn(
+                                    'w-full py-6 text-lg font-medium rounded-full transition-all duration-300',
+                                    !generatedStoryId || error
+                                        ? 'border-2 border-gray-300 text-gray-500 cursor-not-allowed'
+                                        : 'border-2 border-[#4CAF50] text-[#4CAF50] hover:bg-[#4CAF50]/10 cursor-pointer active:bg-[#4CAF50]/20 focus:outline-none focus:ring-4 focus:ring-[#4CAF50]/30'
+                                )}
                             >
                                 <Share2 className="w-5 h-5 mr-2" />
                                 Share Your Story
@@ -142,16 +146,13 @@ export function FinishStep() {
                             animate={{ y: 0, opacity: 1 }}
                             transition={{ delay: 1.1, duration: 0.5 }}
                         >
-                            <Button
+                            <CreateStoryButton
                                 variant="ghost"
-                                onClick={() => {
-                                    // Reset onboarding to start fresh
-                                    resetOnboarding();
-                                }}
-                                className="w-full py-6 text-lg font-medium rounded-full text-gray-600 hover:bg-gray-100 cursor-pointer transition-all duration-300"
+                                className="w-full py-6 text-lg font-medium rounded-full text-gray-600"
+                                showIcon={false}
                             >
                                 Create Another Story
-                            </Button>
+                            </CreateStoryButton>
                         </motion.div>
                     </div>
                 </>

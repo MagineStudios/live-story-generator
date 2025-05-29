@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
 import { Button } from '@/components/ui/button';
+import { ContinueButton } from '@/components/ui/continue-button';
+import { cn } from '@/lib/utils';
 import { SpeechBubble } from './speech-bubble';
 import { Sparkles, Loader2, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -117,7 +119,7 @@ export function ThemeStep() {
     };
 
     return (
-        <div className="flex flex-col px-6 pb-8 justify-center">
+        <div className="flex flex-col px-4 sm:px-6 pb-8 justify-center">
             <div className="mb-6">
                 <SpeechBubble
                     message={displayedText}
@@ -135,14 +137,18 @@ export function ThemeStep() {
                 className="mb-4"
             >
                 <div className="relative">
+                    <label htmlFor="theme-prompt" className="sr-only">Describe your story theme</label>
                     <textarea
                         ref={textareaRef}
+                        id="theme-prompt"
                         value={selectedPrompt}
                         onChange={(e) => {
                             setSelectedPrompt(e.target.value);
                             setThemePrompt(e.target.value);
                         }}
                         placeholder="A magical adventure where..."
+                        aria-label="Describe what you'd like your story to be about"
+                        aria-describedby="theme-suggestions"
                         className="w-full min-h-[120px] px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#4CAF50] focus:ring focus:ring-[#4CAF50]/20 outline-none resize-none font-normal text-gray-700"
                     />
                     <div className="absolute bottom-3 right-3">
@@ -158,7 +164,7 @@ export function ThemeStep() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.4 }}
-                        className="text-sm font-medium text-gray-500"
+                        className="text-xs sm:text-sm font-medium text-gray-500"
                     >
                         {isLoadingSuggestions ? 'Loading suggestions...' : 'Or choose from these suggestions:'}
                     </motion.p>
@@ -169,7 +175,8 @@ export function ThemeStep() {
                             size="sm"
                             onClick={handleRefreshSuggestions}
                             disabled={isLoadingSuggestions}
-                            className="text-xs flex items-center text-gray-500 hover:text-[#4CAF50]"
+                            aria-label="Generate new theme suggestions"
+                            className="text-xs flex items-center text-gray-500 hover:text-[#4CAF50] min-h-[44px] px-3"
                         >
                             <RefreshCw className="w-3 h-3 mr-1" />
                             New Ideas
@@ -193,6 +200,9 @@ export function ThemeStep() {
                                 }
                             }
                         }}
+                        id="theme-suggestions"
+                        role="region"
+                        aria-label="Theme suggestions"
                     >
                         {themeSuggestions.length > 0 ? (
                             themeSuggestions.map((suggestion, index) => (
@@ -206,22 +216,32 @@ export function ThemeStep() {
                                 >
                                     <div
                                         onClick={() => handlePromptSelect(suggestion.text)}
-                                        className="p-3 rounded-lg border border-gray-200 hover:border-[#4CAF50] hover:bg-[#4CAF50]/5 cursor-pointer transition-all"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                handlePromptSelect(suggestion.text);
+                                            }
+                                        }}
+                                        role="button"
+                                        tabIndex={0}
+                                        aria-label={`Select theme: ${suggestion.title}`}
+                                        className="p-4 rounded-lg border border-gray-200 hover:border-[#4CAF50] hover:bg-[#4CAF50]/5 cursor-pointer transition-all min-h-[44px] focus:outline-none focus:ring-2 focus:ring-[#4CAF50]/20"
                                     >
-                                        <h4 className="font-medium text-gray-800 mb-1">{suggestion.title}</h4>
-                                        <p className="text-sm text-gray-600">{suggestion.text}</p>
+                                        <h4 className="font-medium text-gray-800 mb-1 text-sm sm:text-base">{suggestion.title}</h4>
+                                        <p className="text-xs sm:text-sm text-gray-600">{suggestion.text}</p>
                                     </div>
                                 </motion.div>
                             ))
                         ) : (
                             <div className="text-center p-6 bg-gray-50 rounded-lg">
-                                <p className="text-gray-500">No suggestions available yet. Try refreshing or enter your own theme.</p>
+                                <p className="text-sm sm:text-base text-gray-500">No suggestions available yet. Try refreshing or enter your own theme.</p>
                                 <Button
                                     onClick={generateThemeSuggestions}
                                     variant="outline"
                                     size="sm"
-                                    className="mt-3"
+                                    className="mt-3 min-h-[44px]"
                                     disabled={isLoadingSuggestions}
+                                    aria-label="Generate theme suggestions"
                                 >
                                     Generate Suggestions
                                 </Button>
@@ -237,17 +257,13 @@ export function ThemeStep() {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.5, duration: 0.5 }}
             >
-                <Button
+                <ContinueButton
                     onClick={goToNextStep}
                     disabled={!selectedPrompt.trim() || selectedPrompt.length < 10}
-                    className={`w-full py-6 text-lg font-medium rounded-full transition-all duration-300 ${
-                        !selectedPrompt.trim() || selectedPrompt.length < 10
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            : 'bg-[#4CAF50] hover:bg-[#43a047] text-white shadow-md hover:shadow-lg'
-                    }`}
+                    className="w-full"
                 >
                     Create My Story!
-                </Button>
+                </ContinueButton>
             </motion.div>
         </div>
     );

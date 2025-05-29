@@ -1,7 +1,8 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
-import { Button } from '@/components/ui/button';
+import { ContinueButton } from '@/components/ui/continue-button';
+import { cn } from '@/lib/utils';
 import { SpeechBubble } from './speech-bubble';
 import { Check } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -163,9 +164,9 @@ export function StyleStep() {
     // Show loading state while initially fetching styles
     if (isInitialLoad) {
         return (
-            <div className="flex flex-col items-center justify-center px-6 pb-8 h-64">
+            <div className="flex flex-col items-center justify-center px-4 sm:px-6 pb-8 h-64">
                 <div className="animate-pulse flex space-x-4">
-                    <div className="w-12 h-12 rounded-full bg-gray-300"></div>
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gray-300"></div>
                     <div className="flex-1 space-y-4 py-1">
                         <div className="h-4 bg-gray-300 rounded w-3/4"></div>
                         <div className="space-y-2">
@@ -174,13 +175,13 @@ export function StyleStep() {
                         </div>
                     </div>
                 </div>
-                <p className="text-gray-500 mt-4">Loading style options...</p>
+                <p className="text-sm sm:text-base text-gray-500 mt-4">Loading style options...</p>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col px-6 pb-8 justify-center">
+        <div className="flex flex-col px-4 sm:px-6 pb-8 justify-center">
             <div className="mb-6">
                 <SpeechBubble
                     message={displayedText}
@@ -191,10 +192,12 @@ export function StyleStep() {
             </div>
 
             <motion.div
-                className="grid grid-cols-2 gap-3 mb-8"
+                className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8"
                 initial="hidden"
                 animate="visible"
                 variants={containerVariants}
+                role="radiogroup"
+                aria-label="Choose a visual style for your story"
             >
                 {availableStyles.map((style) => {
                     const isSelected = selectedStyle?.id === style.id;
@@ -210,23 +213,38 @@ export function StyleStep() {
                         >
                             <div
                                 onClick={() => !isLoading && handleStyleSelect(style)}
-                                className={`relative h-32 rounded-xl cursor-pointer transition-all duration-300 overflow-hidden ${
-                                    isSelected ? 'ring-4 ring-[#4CAF50] ring-opacity-70 shadow-lg' : 'hover:shadow-md'
-                                } ${isLoading ? 'opacity-60 cursor-wait' : ''}`}
+                                onKeyDown={(e) => {
+                                    if ((e.key === 'Enter' || e.key === ' ') && !isLoading) {
+                                        e.preventDefault();
+                                        handleStyleSelect(style);
+                                    }
+                                }}
+                                role="radio"
+                                aria-checked={isSelected}
+                                aria-label={`Select ${style.name} style`}
+                                tabIndex={isLoading ? -1 : 0}
+                                className={cn(
+                                    'relative min-h-[132px] rounded-xl cursor-pointer transition-all duration-300 overflow-hidden',
+                                    isSelected 
+                                        ? 'ring-4 ring-[#4CAF50] ring-opacity-70 shadow-lg' 
+                                        : 'hover:shadow-md hover:shadow-xl active:shadow-sm',
+                                    isLoading && 'opacity-60 cursor-wait',
+                                    !isLoading && 'focus:outline-none focus:ring-4 focus:ring-[#4CAF50]/30'
+                                )}
                                 style={!hasImage ? { backgroundColor: style.color } : {}}
                             >
                                 {/* Display image if available */}
                                 {hasImage && (
                                     <img
                                         src={style.imageUrl}
-                                        alt={style.name}
+                                        alt={`${style.name} visual style preview`}
                                         className="w-full h-full object-cover"
                                     />
                                 )}
 
                                 {/* Style name */}
-                                <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/40 to-transparent rounded-b-xl">
-                                    <p className="font-medium text-center" style={{ color: hasImage ? '#FFFFFF' : style.textColor }}>
+                                <div className="absolute bottom-0 left-0 right-0 p-2 sm:p-3 bg-gradient-to-t from-black/40 to-transparent rounded-b-xl">
+                                    <p className="font-medium text-center text-sm sm:text-base" style={{ color: hasImage ? '#FFFFFF' : style.textColor }}>
                                         {style.name}
                                     </p>
                                 </div>
@@ -255,9 +273,11 @@ export function StyleStep() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4 }}
                     className="mb-6 px-4 py-3 bg-gray-50 rounded-lg"
+                    role="region"
+                    aria-label="Selected style description"
                 >
-                    <h3 className="font-medium text-gray-800">{selectedStyle.name} Style</h3>
-                    <p className="text-sm text-gray-600 mt-1">{selectedStyle.description}</p>
+                    <h3 className="font-medium text-gray-800 text-sm sm:text-base">{selectedStyle.name} Style</h3>
+                    <p className="text-xs sm:text-sm text-gray-600 mt-1">{selectedStyle.description}</p>
                 </motion.div>
             )}
 
@@ -267,17 +287,12 @@ export function StyleStep() {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.5, duration: 0.5 }}
             >
-                <Button
+                <ContinueButton
                     onClick={goToNextStep}
-                    disabled={!selectedStyle || isLoading}
-                    className={`w-full py-6 text-lg font-medium rounded-full transition-all duration-300 ${
-                        !selectedStyle || isLoading
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            : 'bg-[#4CAF50] hover:bg-[#43a047] text-white shadow-md hover:shadow-lg'
-                    }`}
-                >
-                    {isLoading ? 'Saving...' : 'Continue'}
-                </Button>
+                    disabled={!selectedStyle}
+                    loading={isLoading}
+                    className="w-full"
+                />
             </motion.div>
         </div>
     );

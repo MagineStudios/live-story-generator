@@ -25,6 +25,7 @@ export function GeneratingStep() {
     const [isGenerationStarted, setIsGenerationStarted] = useState(false);
     const [isCreatingStory, setIsCreatingStory] = useState(false);
     const [hasNavigated, setHasNavigated] = useState(false); // Prevent multiple navigations
+    const [isCheckingStory, setIsCheckingStory] = useState(false); // Prevent concurrent checks
 
     // Function to start the story creation process
     const startStoryCreation = async () => {
@@ -85,16 +86,23 @@ export function GeneratingStep() {
         console.log('GeneratingStep navigation effect:', {
             generatedStoryId,
             generationProgress,
-            hasNavigated
+            hasNavigated,
+            isCheckingStory
         });
         
-        if (generatedStoryId && generationProgress >= 25 && !hasNavigated) {
+        if (generatedStoryId && generationProgress >= 25 && !hasNavigated && !isCheckingStory) {
             // Check if story pages are ready
             const checkStoryReady = async () => {
+                // Prevent concurrent checks
+                if (isCheckingStory || hasNavigated) return;
+                
+                setIsCheckingStory(true);
+                
                 try {
                     const response = await fetch(`/api/story/${generatedStoryId}`);
                     if (!response.ok) {
                         console.error('Failed to fetch story:', response.status);
+                        setIsCheckingStory(false);
                         return;
                     }
 
@@ -110,10 +118,16 @@ export function GeneratingStep() {
                     if (storyData.pages && storyData.pages.length > 0 && !hasNavigated) {
                         console.log('Story pages ready, navigating to review step (step 9)');
                         setHasNavigated(true); // Prevent multiple navigations
-                        goToNextStep(); // This should go to step 9 (Review)
+                        // Add a small delay to ensure smooth transition
+                        setTimeout(() => {
+                            goToNextStep(); // This should go to step 9 (Review)
+                        }, 100);
+                    } else {
+                        setIsCheckingStory(false);
                     }
                 } catch (error) {
                     console.error('Error checking story status:', error);
+                    setIsCheckingStory(false);
                 }
             };
 
@@ -131,7 +145,7 @@ export function GeneratingStep() {
                 return () => clearInterval(interval);
             }
         }
-    }, [generatedStoryId, generationProgress, goToNextStep, hasNavigated]);
+    }, [generatedStoryId, generationProgress, goToNextStep, hasNavigated, isCheckingStory]);
 
     // Handle retry
     const handleRetry = () => {
@@ -169,6 +183,15 @@ export function GeneratingStep() {
         if (generationProgress < 75) return 'Building your world...';
         return 'Adding final magical touches...';
     };
+
+    // Handle returning to this step with existing story
+    useEffect(() => {
+        // If we already have a story ID and progress, we're coming back to this step
+        if (generatedStoryId && generationProgress > 0) {
+            setIsGenerationStarted(true);
+            setIsCreatingStory(true);
+        }
+    }, [generatedStoryId, generationProgress]);
 
     return (
         <div className="flex flex-col items-center justify-center px-6 h-full">

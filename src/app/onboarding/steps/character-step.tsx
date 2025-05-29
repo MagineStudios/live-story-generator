@@ -1,7 +1,8 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useOptimistic, startTransition } from 'react';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
-import { Button } from '@/components/ui/button';
+import { ContinueButton } from '@/components/ui/continue-button';
+import { cn } from '@/lib/utils';
 import { SpeechBubble } from './speech-bubble';
 import { User, Upload, Pencil, Plus, CheckCircle, Crown, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,6 +32,9 @@ interface CharacterAttributes {
 }
 
 export function CharactersStep() {
+    // Character limit - moved to the top
+    const MAX_CHARACTERS = 3;
+
     const { userId } = useAuth();
     const {
         selectedElements,
@@ -56,6 +60,26 @@ export function CharactersStep() {
 
     // Selected character tracking (max 3)
     const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
+    
+    // Use optimistic updates for character selection
+    const [optimisticSelectedCharacters, setOptimisticSelectedCharacters] = useOptimistic(
+        selectedCharacters,
+        (state: string[], updatedCharacterId: string) => {
+            if (state.includes(updatedCharacterId)) {
+                return state.filter(id => id !== updatedCharacterId);
+            }
+            if (state.length >= MAX_CHARACTERS) {
+                return state;
+            }
+            return [...state, updatedCharacterId];
+        }
+    );
+    
+    // Use optimistic updates for primary character
+    const [optimisticPrimaryCharacterId, setOptimisticPrimaryCharacterId] = useOptimistic(
+        primaryCharacterId,
+        (_state: string | null, newPrimaryId: string | null) => newPrimaryId
+    );
 
     // State for attributes editor
     const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -67,15 +91,11 @@ export function CharactersStep() {
     // Local storage for characters to ensure they persist
     const [localCharacters, setLocalCharacters] = useState<any[]>([]);
 
-    // Character limit
-    const MAX_CHARACTERS = 3;
-
     // Dynamic speech bubble text
-    const baseText = "Who should be in your story? Select up to 3 characters to join the adventure!";
+    const baseText = `Who should be in your story? Select up to ${MAX_CHARACTERS} characters to join the adventure!`;
     const uploadingText = "Analyzing your image... The magic is happening! ✨";
-    const categoryDetectionText = "Hmm, let me see what we have here...";
     const loadingText = "Loading your cast of characters...";
-    const maxCharactersText = "Amazing! You've selected all 3 characters for your story!";
+    const maxCharactersText = `Amazing! You've selected all ${MAX_CHARACTERS} characters for your story!`;
     const confirmTraitsText = "Your character is ready! Let's add some details to bring them to life!";
 
     // Dynamic speech messages that incorporate names and types
@@ -145,9 +165,15 @@ export function CharactersStep() {
                         setPrimaryCharacterId(existingCharacters[0].id);
                     }
 
-                    // Initialize selected characters
-                    const initialSelected = existingCharacters.slice(0, MAX_CHARACTERS).map(c => c.id);
-                    setSelectedCharacters(initialSelected);
+                    // Initialize selected characters - ensure all loaded characters are selected
+                    const initialSelected = existingCharacters
+                        .slice(0, MAX_CHARACTERS)
+                        .map(c => c.id)
+                        .filter(id => id); // Filter out any undefined/null ids
+                    
+                    // Use a Set to ensure no duplicates
+                    const uniqueSelected = [...new Set(initialSelected)];
+                    setSelectedCharacters(uniqueSelected);
                 } else if (userId) {
                     // Only fetch from API if user is logged in and we don't have characters
                     const response = await fetch('/api/my-world/elements?categories=CHARACTER,PET,OBJECT');
@@ -170,9 +196,15 @@ export function CharactersStep() {
                                 setPrimaryCharacterId(elements[0].id);
                             }
 
-                            // Initialize selected characters
-                            const initialSelected = elements.slice(0, MAX_CHARACTERS).map((e: any) => e.id);
-                            setSelectedCharacters(initialSelected);
+                            // Initialize selected characters - ensure all loaded characters are selected
+                            const initialSelected = elements
+                                .slice(0, MAX_CHARACTERS)
+                                .map((e: any) => e.id)
+                                .filter((id: string) => id); // Filter out any undefined/null ids
+                            
+                            // Use a Set to ensure no duplicates
+                            const uniqueSelected = [...new Set(initialSelected)];
+                            setSelectedCharacters(uniqueSelected);
 
                             animateText("Welcome back! Who should star in today's story?");
                         } else {
@@ -222,59 +254,88 @@ export function CharactersStep() {
         }
     }, [selectedCharacters]);
 
-    // Toggle character selection
+    // Toggle character selection with optimistic update
     const toggleCharacterSelection = (characterId: string) => {
-        if (selectedCharacters.includes(characterId)) {
-            // Remove from selection (allow unselection of primary character)
-            setSelectedCharacters(selectedCharacters.filter(id => id !== characterId));
+        startTransition(() => {
+            // Optimistically update the UI
+            setOptimisticSelectedCharacters(characterId);
+            
+            if (selectedCharacters.includes(characterId)) {
+                // Remove from selection (allow unselection of primary character)
+                setSelectedCharacters(selectedCharacters.filter(id => id !== characterId));
 
-            // If this was the primary character, clear primary status
-            if (characterId === primaryCharacterId) {
-                setPrimaryCharacterId(null);
+                // If this was the primary character, clear primary status
+                if (characterId === primaryCharacterId) {
+                    setOptimisticPrimaryCharacterId(null);
+                    setPrimaryCharacterId(null);
+                }
+            } else {
+                // Check if we've reached the max before adding
+                if (selectedCharacters.length >= MAX_CHARACTERS) {
+                    toast.error("Maximum Characters", {
+                        description: `You can only select up to ${MAX_CHARACTERS} characters.`
+                    });
+                    return;
+                }
+
+                // Add to selection
+                setSelectedCharacters([...selectedCharacters, characterId]);
             }
-        } else {
-            // Check if we've reached the max before adding
-            if (selectedCharacters.length >= MAX_CHARACTERS) {
-                toast.error("Maximum Characters", {
-                    description: `You can only select up to ${MAX_CHARACTERS} characters.`
-                });
+        });
+    };
+
+    // Set primary character with optimistic update
+    const setPrimaryCharacter = (characterId: string) => {
+        startTransition(() => {
+            // Toggle primary status
+            if (characterId === primaryCharacterId) {
+                // Removing primary status
+                setOptimisticPrimaryCharacterId(null);
+                setPrimaryCharacterId(null);
+                
+                // Ensure the character remains selected when removing primary status
+                if (!selectedCharacters.includes(characterId) && selectedCharacters.length < MAX_CHARACTERS) {
+                    setSelectedCharacters([...selectedCharacters, characterId]);
+                    // Also update optimistic state
+                    setOptimisticSelectedCharacters(characterId);
+                }
+                
+                // Update speech bubble to indicate primary status removed
+                const character = selectedElements.find(el => el.id === characterId) ||
+                    localCharacters.find(el => el.id === characterId);
+                if (character) {
+                    animateText(`${character.name} is no longer the primary character. Click on any character's crown to make them the star!`);
+                }
                 return;
             }
 
-            // Add to selection
-            setSelectedCharacters([...selectedCharacters, characterId]);
-        }
-    };
+            // Find the character by ID
+            const character = selectedElements.find(el => el.id === characterId) ||
+                localCharacters.find(el => el.id === characterId);
 
-    // Set primary character
-    const setPrimaryCharacter = (characterId: string) => {
-        // Toggle primary status
-        if (characterId === primaryCharacterId) {
-            setPrimaryCharacterId(null);
-            return;
-        }
+            const characterName = character ? character.name : "This character";
 
-        // Find the character by ID
-        const character = selectedElements.find(el => el.id === characterId) ||
-            localCharacters.find(el => el.id === characterId);
+            // Optimistically update the primary character
+            setOptimisticPrimaryCharacterId(characterId);
+            
+            // Set new primary in the context
+            setPrimaryCharacterId(characterId);
 
-        const characterName = character ? character.name : "This character";
-
-        // Set new primary in the context
-        setPrimaryCharacterId(characterId);
-
-        // Ensure the primary character is selected
-        if (!selectedCharacters.includes(characterId)) {
-            // If we're at max capacity, remove the last selected character
-            if (selectedCharacters.length >= MAX_CHARACTERS) {
-                const charactersToKeep = selectedCharacters.slice(0, MAX_CHARACTERS - 1);
-                setSelectedCharacters([...charactersToKeep, characterId]);
-            } else {
-                setSelectedCharacters([...selectedCharacters, characterId]);
+            // Ensure the primary character is selected
+            if (!selectedCharacters.includes(characterId)) {
+                // If we're at max capacity, remove the last selected character
+                if (selectedCharacters.length >= MAX_CHARACTERS) {
+                    const charactersToKeep = selectedCharacters.slice(0, MAX_CHARACTERS - 1);
+                    setSelectedCharacters([...charactersToKeep, characterId]);
+                } else {
+                    setSelectedCharacters([...selectedCharacters, characterId]);
+                }
+                // Update optimistic state
+                setOptimisticSelectedCharacters(characterId);
             }
-        }
 
-        animateText(getSpeechForPrimaryChange(characterName));
+            animateText(getSpeechForPrimaryChange(characterName));
+        });
     };
 
     // Handle file selection trigger
@@ -631,7 +692,7 @@ export function CharactersStep() {
     };
 
     return (
-        <div className="flex flex-col px-6 pb-8 justify-center">
+        <div className="flex flex-col px-4 sm:px-6 pb-8 justify-center">
             {/* Hidden file input element */}
             <input
                 ref={fileInputRef}
@@ -641,6 +702,7 @@ export function CharactersStep() {
                 disabled={isAnalyzingImage || isLoading || showAnalyzingUI}
                 style={{ display: 'none' }}
                 id="character-upload-input"
+                aria-label="Upload character image file"
             />
 
             <div className="mb-6">
@@ -653,18 +715,18 @@ export function CharactersStep() {
             </div>
 
             <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">Characters</h2>
+                <h2 className="text-base sm:text-lg font-semibold">Characters</h2>
 
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                            <div className="flex items-center text-sm text-gray-500 cursor-pointer">
+                            <div className="flex items-center text-sm text-gray-500 cursor-pointer" role="button" aria-label="Information about character selection">
                                 <Info size={16} className="mr-1" />
                                 About Characters
                             </div>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs">
-                            <p className="mb-2">Select up to 3 characters for your story. These can be humans, pets, toys, or other objects!</p>
+                            <p className="mb-2">Select up to {MAX_CHARACTERS} characters for your story. These can be humans, pets, toys, or other objects!</p>
                             <p className="mb-2">The <span className="font-medium">Primary</span> character (marked with a crown) will be the main focus of your story.</p>
                             <p>Click the crown icon on any character to make them primary.</p>
                         </TooltipContent>
@@ -689,8 +751,8 @@ export function CharactersStep() {
                             <div className="w-16 h-16 rounded-full bg-[#4CAF50]/5 flex items-center justify-center mb-4">
                                 <div className="w-8 h-8 border-2 border-[#4CAF50] border-t-transparent rounded-full animate-spin" />
                             </div>
-                            <h3 className="text-lg font-medium text-gray-700">Analyzing Image...</h3>
-                            <p className="text-gray-500 mt-2">Please wait while we process your image</p>
+                            <h3 className="text-base sm:text-lg font-medium text-gray-700">Analyzing Image...</h3>
+                            <p className="text-sm sm:text-base text-gray-500 mt-2">Please wait while we process your image</p>
                         </div>
                     </motion.div>
                 )}
@@ -698,9 +760,9 @@ export function CharactersStep() {
                 {/* Display characters - ALWAYS shown, regardless of analyzing state */}
                 <AnimatePresence>
                     {charactersForDisplay.map((character) => {
-                        const isSelected = selectedCharacters.includes(character.id);
-                        const isPrimary = character.id === primaryCharacterId;
-                        const isSelectable = isSelected || selectedCharacters.length < MAX_CHARACTERS;
+                        const isSelected = optimisticSelectedCharacters.includes(character.id);
+                        const isPrimary = character.id === optimisticPrimaryCharacterId;
+                        const isSelectable = isSelected || optimisticSelectedCharacters.length < MAX_CHARACTERS;
 
                         return (
                             <motion.div
@@ -718,18 +780,30 @@ export function CharactersStep() {
                                             toggleCharacterSelection(character.id);
                                         }
                                     }}
-                                    className={`relative flex items-center p-3 bg-white rounded-xl border-2 ${
+                                    onKeyDown={(e) => {
+                                        if ((e.key === 'Enter' || e.key === ' ') && !showAnalyzingUI && (isSelectable || isSelected)) {
+                                            e.preventDefault();
+                                            toggleCharacterSelection(character.id);
+                                        }
+                                    }}
+                                    role="checkbox"
+                                    aria-checked={isSelected}
+                                    aria-label={`Select ${character.name} for your story`}
+                                    tabIndex={!showAnalyzingUI && (isSelectable || isSelected) ? 0 : -1}
+                                    className={cn(
+                                        'relative flex items-center p-3 bg-white rounded-xl border-2 transition-all min-h-[44px]',
                                         isSelected
                                             ? 'border-[#4CAF50] shadow-md'
-                                            : 'border-gray-200 shadow-sm'
-                                    } ${
+                                            : 'border-gray-200 shadow-sm',
                                         !showAnalyzingUI && (isSelectable || isSelected)
-                                            ? 'hover:bg-gray-100 cursor-pointer'
-                                            : showAnalyzingUI ? 'opacity-50' : 'opacity-70 cursor-not-allowed'
-                                    } transition-all`}
+                                            ? 'hover:bg-gray-100 cursor-pointer hover:shadow-lg active:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#4CAF50]/20'
+                                            : showAnalyzingUI 
+                                                ? 'opacity-50' 
+                                                : 'opacity-70 cursor-not-allowed'
+                                    )}
                                 >
                                     {/* Crown icon in top left with tooltip */}
-                                    <div className="absolute -top-2 -left-2">
+                                    <div className="absolute -top-2 -left-2 z-10">
                                         <TooltipProvider>
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
@@ -741,11 +815,16 @@ export function CharactersStep() {
                                                                 setPrimaryCharacter(character.id);
                                                             }
                                                         }}
-                                                        className={`w-6 h-6 rounded-full flex items-center justify-center shadow-sm ${
+                                                        aria-label={isPrimary ? `${character.name} is the primary character` : `Set ${character.name} as primary character`}
+                                                        className={cn(
+                                                            'min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center shadow-sm transition-all',
                                                             isPrimary
-                                                                ? 'bg-amber-400'
-                                                                : 'bg-gray-300 hover:bg-gray-400'
-                                                        } ${showAnalyzingUI ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                                                ? 'bg-amber-400 hover:bg-amber-500 active:bg-amber-600'
+                                                                : 'bg-gray-300 hover:bg-gray-400 active:bg-gray-500',
+                                                            showAnalyzingUI 
+                                                                ? 'opacity-50 cursor-not-allowed' 
+                                                                : 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-400/50'
+                                                        )}
                                                         disabled={showAnalyzingUI}
                                                     >
                                                         <Crown className="w-3.5 h-3.5 text-white" />
@@ -762,7 +841,7 @@ export function CharactersStep() {
                                         {character.imageUrl ? (
                                             <img
                                                 src={character.imageUrl}
-                                                alt={character.name}
+                                                alt={`${character.name} character image`}
                                                 className="w-full h-full object-cover"
                                             />
                                         ) : (
@@ -778,11 +857,11 @@ export function CharactersStep() {
 
                                     <div className="flex-1">
                                         <div className="flex items-center">
-                                            <h4 className="font-medium text-gray-800">
+                                            <h4 className="font-medium text-gray-800 text-sm sm:text-base">
                                                 {character.name}
                                             </h4>
                                         </div>
-                                        <p className="text-sm text-gray-500 line-clamp-1">
+                                        <p className="text-xs sm:text-sm text-gray-500 line-clamp-1">
                                             {character.category === 'PET' && <span className="mr-1">🐾</span>}
                                             {character.category === 'OBJECT' && <span className="mr-1">🧸</span>}
                                             {character.description || 'No description'}
@@ -799,7 +878,13 @@ export function CharactersStep() {
                                                     handleEditAttributes(character.id);
                                                 }
                                             }}
-                                            className={`p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors ${showAnalyzingUI ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                            aria-label={`Edit details for ${character.name}`}
+                                            className={cn(
+                                                'min-w-[44px] min-h-[44px] flex items-center justify-center text-gray-500 rounded-full transition-all',
+                                                showAnalyzingUI 
+                                                    ? 'opacity-50 cursor-not-allowed' 
+                                                    : 'cursor-pointer hover:text-gray-700 hover:bg-gray-100 active:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300'
+                                            )}
                                             disabled={showAnalyzingUI}
                                         >
                                             <Pencil className="w-5 h-5" />
@@ -818,11 +903,13 @@ export function CharactersStep() {
                             type="button"
                             onClick={triggerFileSelect}
                             disabled={isAnalyzingImage || isLoading}
-                            className={`w-full flex items-center justify-center p-6 rounded-xl border-2 border-dashed transition-colors ${
+                            aria-label="Upload character image"
+                            className={cn(
+                                'w-full flex items-center justify-center p-6 rounded-xl border-2 border-dashed transition-all min-h-[44px]',
                                 isAnalyzingImage || isLoading
                                     ? 'border-gray-300 bg-gray-50 cursor-wait'
-                                    : 'border-[#4CAF50] hover:bg-[#4CAF50]/5 cursor-pointer'
-                            }`}
+                                    : 'border-[#4CAF50] hover:bg-[#4CAF50]/5 cursor-pointer hover:border-[#4CAF50]/70 active:bg-[#4CAF50]/10 focus:outline-none focus:ring-2 focus:ring-[#4CAF50]/20'
+                            )}
                         >
                             <div className="flex flex-col items-center text-center">
                                 <div className="w-14 h-14 rounded-full bg-[#4CAF50]/10 flex items-center justify-center mb-3">
@@ -832,14 +919,14 @@ export function CharactersStep() {
                                         <Upload className="w-6 h-6 text-[#4CAF50]" />
                                     )}
                                 </div>
-                                <p className="font-medium text-gray-700 mb-1">
+                                <p className="font-medium text-gray-700 mb-1 text-sm sm:text-base">
                                     {isAnalyzingImage
                                         ? 'Analyzing Image...'
                                         : isLoading
                                             ? 'Loading characters...'
                                             : 'Upload a character image'}
                                 </p>
-                                <p className="text-sm text-gray-500">
+                                <p className="text-xs sm:text-sm text-gray-500">
                                     {isAnalyzingImage
                                         ? 'Please wait while we process your image'
                                         : isLoading
@@ -863,11 +950,13 @@ export function CharactersStep() {
                             type="button"
                             onClick={triggerFileSelect}
                             disabled={isAnalyzingImage || isLoading || showAnalyzingUI}
-                            className={`flex items-center justify-center w-full p-3 rounded-lg border-2 border-gray-200 
-                                ${characterCount >= MAX_CHARACTERS || isAnalyzingImage || isLoading || showAnalyzingUI
-                                ? 'text-gray-400 cursor-not-allowed'
-                                : 'text-gray-600 hover:bg-gray-100 hover:border-gray-300 cursor-pointer'
-                            } transition-colors`}
+                            aria-label={characterCount >= MAX_CHARACTERS ? 'Maximum characters reached' : 'Add another character'}
+                            className={cn(
+                                'flex items-center justify-center w-full p-3 rounded-lg border-2 border-gray-200 transition-all min-h-[44px]',
+                                characterCount >= MAX_CHARACTERS || isAnalyzingImage || isLoading || showAnalyzingUI
+                                    ? 'text-gray-400 cursor-not-allowed'
+                                    : 'text-gray-600 hover:bg-gray-100 hover:border-gray-300 cursor-pointer active:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300'
+                            )}
                         >
                             <Plus className="w-5 h-5 mr-2" />
                             <span>
@@ -887,9 +976,14 @@ export function CharactersStep() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.5 }}
-                    className="mt-4 text-center text-sm text-gray-500"
+                    className="mt-4 text-center text-xs sm:text-sm text-gray-500"
+                    aria-live="polite"
+                    aria-atomic="true"
                 >
-                    <span className={selectedCharacters.length === MAX_CHARACTERS ? 'text-[#4CAF50] font-medium' : ''}>
+                    <span className={cn(
+                        'transition-all',
+                        selectedCharacters.length === MAX_CHARACTERS && 'text-[#4CAF50] font-medium'
+                    )}>
                         {selectedCharacters.length} / {MAX_CHARACTERS} characters selected
                     </span>
                 </motion.div>
@@ -901,7 +995,7 @@ export function CharactersStep() {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.5, duration: 0.5 }}
             >
-                <Button
+                <ContinueButton
                     onClick={() => {
                         // Before proceeding, ensure the selected primary character ID is propagated to context
                         if (selectedCharacters.length > 0 && !primaryCharacterId) {
@@ -912,19 +1006,11 @@ export function CharactersStep() {
                         goToNextStep();
                     }}
                     disabled={!canProceed || isAnalyzingImage || isLoading || showAnalyzingUI || pendingCharacters.length > 0}
-                    className={`w-full py-6 text-lg font-medium rounded-full ${
-                        canProceed && !showAnalyzingUI && pendingCharacters.length === 0
-                            ? 'bg-[#4CAF50] hover:bg-[#43a047] text-white cursor-pointer shadow-md hover:shadow-lg'
-                            : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                    } transition-all duration-300`}
+                    loading={isAnalyzingImage || isLoading || showAnalyzingUI}
+                    className="w-full"
                 >
-                    {canProceed ? (
-                        <>
-                            <CheckCircle className="w-5 h-5 mr-2" />
-                            Continue
-                        </>
-                    ) : 'Select at least one character'}
-                </Button>
+                    {canProceed ? 'Continue' : 'Select at least one character'}
+                </ContinueButton>
             </motion.div>
 
             {/* Character attributes editor with proper category handling */}

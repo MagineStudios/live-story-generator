@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
 import { Smile, BookOpen, Moon, Gift, Heart, PawPrint } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { ContinueButton } from '@/components/ui/continue-button';
 import { SpeechBubble } from './speech-bubble';
 import { motion } from 'framer-motion';
 
@@ -62,7 +63,7 @@ export function GoalStep() {
     }, [currentStep]);
 
     return (
-        <div className="flex flex-col px-6 pb-8 justify-center">
+        <div className="flex flex-col px-4 sm:px-6 pb-8 justify-center">
             <div className="mb-6">
                 <SpeechBubble
                     message={displayedText}
@@ -83,6 +84,8 @@ export function GoalStep() {
                         }
                     }
                 }}
+                role="group"
+                aria-label="Select story goals"
             >
                 {GOAL_OPTIONS.map(({ value, label, imageUrl }) => {
                     const isSelected = selectedGoals.includes(value);
@@ -106,17 +109,38 @@ export function GoalStep() {
                                     setStoryGoal(newSelected);
                                     if (!wasSelected) animateText(questionMap[value] || fallback);
                                 }}
-                                className={`flex items-center justify-between px-4 py-3 rounded-2xl transition-all cursor-pointer ${
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        const wasSelected = isSelected;
+                                        const newSelected = wasSelected
+                                            ? selectedGoals.filter(v => v !== value)
+                                            : [...selectedGoals, value];
+                                        setSelectedGoals(newSelected);
+                                        setStoryGoal(newSelected);
+                                        if (!wasSelected) animateText(questionMap[value] || fallback);
+                                    }
+                                }}
+                                role="checkbox"
+                                aria-checked={isSelected}
+                                aria-label={`${label} story goal`}
+                                tabIndex={0}
+                                className={cn(
+                                    'flex items-center justify-between px-4 py-3 rounded-2xl transition-all cursor-pointer min-h-[44px]',
                                     isSelected
                                         ? 'bg-[#E6F4FA] border border-[#00ABF0]/30'
-                                        : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
-                                }`}
+                                        : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 active:bg-gray-200',
+                                    'focus:outline-none focus:ring-2 focus:ring-[#00ABF0]/20'
+                                )}
                             >
                                 <div className="flex items-center space-x-3">
                                     {/* Custom image/icon instead of Lucide icon */}
-                                    <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
+                                    <div className="flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center">
                                         {/* If you have the actual images, use Image component */}
-                                        <div className={`w-9 h-9 rounded-md flex items-center justify-center ${isSelected ? 'text-[#00ABF0]' : 'text-gray-700'}`}>
+                                        <div className={cn(
+                                            'w-full h-full rounded-md flex items-center justify-center transition-all',
+                                            isSelected ? 'text-[#00ABF0]' : 'text-gray-700'
+                                        )}>
                                             {value === 'Adventure' && <Smile className="w-7 h-7" />}
                                             {value === 'Educational' && <BookOpen className="w-7 h-7" />}
                                             {value === 'Bedtime' && <Moon className="w-7 h-7" />}
@@ -125,15 +149,19 @@ export function GoalStep() {
                                             {value === 'PetStories' && <PawPrint className="w-7 h-7" />}
                                         </div>
                                     </div>
-                                    <span className={`font-medium ${isSelected ? 'text-[#00ABF0]' : 'text-gray-800'}`}>
+                                    <span className={cn(
+                                        'font-medium transition-all',
+                                        isSelected ? 'text-[#00ABF0]' : 'text-gray-800'
+                                    )}>
                                         {label}
                                     </span>
                                 </div>
 
                                 {/* Checkbox */}
-                                <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center transition-all ${
+                                <div className={cn(
+                                    'min-w-[44px] min-h-[44px] flex-shrink-0 rounded-full flex items-center justify-center transition-all',
                                     isSelected ? 'bg-[#00ABF0]' : 'bg-white border border-gray-300'
-                                }`}>
+                                )}>
                                     {isSelected && (
                                         <motion.svg
                                             initial={{ scale: 0 }}
@@ -166,20 +194,14 @@ export function GoalStep() {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.5, duration: 0.5 }}
             >
-                <Button
+                <ContinueButton
                     onClick={() => {
                         setStoryGoal(selectedGoals);
                         goToNextStep();
                     }}
                     disabled={selectedGoals.length === 0}
-                    className={`w-full py-6 text-lg font-medium rounded-full transition-all duration-300 ${
-                        selectedGoals.length === 0
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                            : 'bg-[#4CAF50] hover:bg-[#43a047] text-white shadow-md hover:shadow-lg'
-                    }`}
-                >
-                    Continue
-                </Button>
+                    className="w-full"
+                />
             </motion.div>
         </div>
     );
