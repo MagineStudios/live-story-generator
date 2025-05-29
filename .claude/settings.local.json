@@ -6,7 +6,11 @@
       "Bash(npx tsc:*)",
       "Bash(npm run build:*)",
       "Bash(npm run dev:*)",
-      "Bash(npm run type-check:*)"
+      "Bash(npm run type-check:*)",
+      "Bash(mkdir:*)",
+      "Bash(git -C /Users/alexhawkins/Sites/live-story-generator status)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   },
   "enableAllProjectMcpServers": false

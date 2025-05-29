@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { BookOpen, Home, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,15 +29,16 @@ export default function NotFound() {
             </Button>
           </Link>
           
-          <Link href="/onboarding">
-            <Button 
-              size="lg"
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              Create New Story
-            </Button>
-          </Link>
+          <Button 
+            size="lg"
+            onClick={() => {
+              window.location.href = '/onboarding?reset=true';
+            }}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Create New Story
+          </Button>
         </div>
       </div>
     </div>

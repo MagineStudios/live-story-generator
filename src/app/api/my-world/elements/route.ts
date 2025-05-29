@@ -56,16 +56,33 @@ export async function GET(req: NextRequest) {
                     attributes = null;
             }
 
-            // Return the element with flattened attributes
-            return {
-                ...element,
-                attributes,
-                // Remove the specific attribute fields to clean up the response
-                characterAttributes: undefined,
-                petAttributes: undefined,
-                objectAttributes: undefined,
-                locationAttributes: undefined,
+            // Create a clean element object
+            const cleanElement = {
+                id: element.id,
+                name: element.name,
+                description: element.description,
+                imageUrl: element.imageUrl,
+                publicId: element.publicId,
+                category: element.category,
+                isDefault: element.isDefault,
+                isDetectedInStory: element.isDetectedInStory,
+                isPrimary: element.isPrimary,
+                userId: element.userId,
+                tempId: element.tempId,
+                createdAt: element.createdAt,
+                updatedAt: element.updatedAt,
             };
+
+            // Add the appropriate attributes field based on category
+            if (attributes) {
+                const attributeKey = `${element.category.toLowerCase()}Attributes`;
+                return {
+                    ...cleanElement,
+                    [attributeKey]: attributes,
+                };
+            }
+
+            return cleanElement;
         });
 
         return NextResponse.json({ elements: transformedElements });

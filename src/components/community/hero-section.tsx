@@ -65,15 +65,20 @@ export function HeroSection() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="flex flex-col sm:flex-row gap-4 justify-center mb-12"
           >
-            <Link href={isSignedIn ? "/onboarding" : "/sign-up"}>
-              <Button
-                size="lg"
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-xl transition-all group"
-              >
-                <Sparkles className="w-5 h-5 mr-2 group-hover:animate-pulse" />
-                Create Your Story
-              </Button>
-            </Link>
+            <Button
+              size="lg"
+              onClick={() => {
+                if (isSignedIn) {
+                  window.location.href = '/onboarding?reset=true';
+                } else {
+                  window.location.href = '/sign-up';
+                }
+              }}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-xl transition-all group"
+            >
+              <Sparkles className="w-5 h-5 mr-2 group-hover:animate-pulse" />
+              Create Your Story
+            </Button>
             <Link href="#community">
               <Button
                 size="lg"

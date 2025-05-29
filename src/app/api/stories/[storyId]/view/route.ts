@@ -3,10 +3,10 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { storyId: string } }
+  { params }: { params: Promise<{ storyId: string }> }
 ) {
   try {
-    const { storyId } = params;
+    const { storyId } = await params;
     
     // Increment view count
     const updatedStory = await prisma.story.update({

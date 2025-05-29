@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { storyId: string } }
+  { params }: { params: Promise<{ storyId: string }> }
 ) {
   try {
     const { userId } = await auth();
@@ -16,7 +16,22 @@ export async function POST(
       );
     }
     
-    const { storyId } = params;
+    const { storyId } = await params;
+    
+    // First, ensure the user exists in our database
+    let user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+    
+    if (!user) {
+      // Create the user if they don't exist
+      user = await prisma.user.create({
+        data: {
+          id: userId,
+          credits: 0 // Default credits
+        }
+      });
+    }
     
     // Check if story exists and is public
     const story = await prisma.story.findUnique({
@@ -49,28 +64,33 @@ export async function POST(
     }
     
     // Create like and increment count in a transaction
-    const [like, updatedStory] = await prisma.$transaction([
-      prisma.storyLike.create({
-        data: {
-          storyId,
-          userId
-        }
-      }),
-      prisma.story.update({
-        where: { id: storyId },
-        data: {
-          likesCount: { increment: 1 }
-        },
-        select: {
-          likesCount: true
-        }
-      })
-    ]);
-    
-    return NextResponse.json({
-      liked: true,
-      likesCount: updatedStory.likesCount
-    });
+    try {
+      const [like, updatedStory] = await prisma.$transaction([
+        prisma.storyLike.create({
+          data: {
+            storyId,
+            userId
+          }
+        }),
+        prisma.story.update({
+          where: { id: storyId },
+          data: {
+            likesCount: { increment: 1 }
+          },
+          select: {
+            likesCount: true
+          }
+        })
+      ]);
+      
+      return NextResponse.json({
+        liked: true,
+        likesCount: updatedStory.likesCount
+      });
+    } catch (dbError) {
+      console.error('Database error creating like:', dbError);
+      throw dbError;
+    }
   } catch (error) {
     console.error('Error liking story:', error);
     return NextResponse.json(
@@ -82,7 +102,7 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { storyId: string } }
+  { params }: { params: Promise<{ storyId: string }> }
 ) {
   try {
     const { userId } = await auth();
@@ -94,7 +114,7 @@ export async function DELETE(
       );
     }
     
-    const { storyId } = params;
+    const { storyId } = await params;
     
     // Check if like exists
     const existingLike = await prisma.storyLike.findUnique({

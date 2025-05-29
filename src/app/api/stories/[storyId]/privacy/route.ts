@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { storyId: string } }
+  { params }: { params: Promise<{ storyId: string }> }
 ) {
   try {
     const { userId } = await auth();
@@ -16,7 +16,7 @@ export async function PATCH(
       );
     }
     
-    const { storyId } = params;
+    const { storyId } = await params;
     const { isPublic } = await request.json();
     
     // Verify ownership

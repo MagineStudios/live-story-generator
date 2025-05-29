@@ -10,9 +10,15 @@ export async function GET(req: NextRequest, context: any) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Get the specific element
+        // Get the specific element with attributes
         const element = await prisma.myWorldElement.findUnique({
-            where: { id }
+            where: { id },
+            include: {
+                characterAttributes: true,
+                petAttributes: true,
+                objectAttributes: true,
+                locationAttributes: true,
+            }
         });
 
         if (!element) {
@@ -24,7 +30,28 @@ export async function GET(req: NextRequest, context: any) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
-        return NextResponse.json({ element });
+        // Transform the element to have attributes in the expected format
+        const attributeKey = `${element.category.toLowerCase()}Attributes`;
+        const attributes = element[attributeKey];
+        
+        const transformedElement = {
+            id: element.id,
+            name: element.name,
+            description: element.description,
+            imageUrl: element.imageUrl,
+            publicId: element.publicId,
+            category: element.category,
+            isDefault: element.isDefault,
+            isDetectedInStory: element.isDetectedInStory,
+            isPrimary: element.isPrimary,
+            userId: element.userId,
+            tempId: element.tempId,
+            createdAt: element.createdAt,
+            updatedAt: element.updatedAt,
+            [attributeKey]: attributes,
+        };
+
+        return NextResponse.json({ element: transformedElement });
     } catch (error: any) {
         console.error('Error fetching element:', error);
         return NextResponse.json(
@@ -34,8 +61,8 @@ export async function GET(req: NextRequest, context: any) {
     }
 }
 
-// Update the PUT and DELETE functions with the same pattern
-export async function PUT(req: NextRequest, context: any) {
+// Update element with PATCH
+export async function PATCH(req: NextRequest, context: any) {
   const { id } = await context.params as { id: string };
     try {
         const { userId } = await auth();
@@ -43,9 +70,9 @@ export async function PUT(req: NextRequest, context: any) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { name, description } = await req.json();
+        const { name, description, isPrimary } = await req.json();
 
-        // Rest of your PUT function...
+        // Find the element
         const element = await prisma.myWorldElement.findUnique({
             where: { id },
         });
@@ -58,12 +85,25 @@ export async function PUT(req: NextRequest, context: any) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
+        // If setting as primary, unset other primary elements of the same category
+        if (isPrimary && element.category === 'CHARACTER') {
+            await prisma.myWorldElement.updateMany({
+                where: {
+                    userId,
+                    category: 'CHARACTER',
+                    id: { not: id }
+                },
+                data: { isPrimary: false }
+            });
+        }
+
         // Update the element
         const updatedElement = await prisma.myWorldElement.update({
             where: { id },
             data: {
                 name,
                 description,
+                isPrimary: element.category === 'CHARACTER' ? isPrimary : false,
             }
         });
 

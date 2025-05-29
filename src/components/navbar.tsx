@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Sparkles, BookOpen, Plus, User } from "lucide-react";
+import { Sparkles, BookOpen, Plus, User, Globe } from "lucide-react";
 import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { usePathname } from "next/navigation";
@@ -52,9 +52,25 @@ export default function NavBar() {
                                     <User className="h-4 w-4 inline mr-1.5" />
                                     My Stories
                                 </Link>
-                                
+
                                 <Link
-                                    href="/onboarding"
+                                    href="/dashboard/my-world"
+                                    className={cn(
+                                        "px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                                        pathname === "/dashboard/my-world" 
+                                            ? "text-purple-600 bg-purple-50" 
+                                            : "text-gray-700 hover:text-purple-600 hover:bg-purple-50"
+                                    )}
+                                >
+                                    <Globe className="h-4 w-4 inline mr-1.5" />
+                                    My World
+                                </Link>
+                                
+                                <button
+                                    onClick={() => {
+                                        // Use window.location to ensure a full page reload and reset
+                                        window.location.href = '/onboarding?reset=true';
+                                    }}
                                     className={cn(
                                         "px-3 py-2 rounded-md text-sm font-medium transition-colors",
                                         pathname === "/onboarding" 
@@ -64,7 +80,7 @@ export default function NavBar() {
                                 >
                                     <Plus className="h-4 w-4 inline mr-1.5" />
                                     Create Story
-                                </Link>
+                                </button>
                             </>
                         )}
                     </div>
@@ -109,13 +125,25 @@ export default function NavBar() {
 
                 {/* Mobile menu placeholder - you can expand this if needed */}
                 <div className="sm:hidden flex items-center justify-center py-2 border-t">
-                    <Link
-                        href={isSignedIn ? "/onboarding" : "/sign-up"}
-                        className="text-sm font-medium text-purple-600"
-                    >
-                        <Plus className="h-4 w-4 inline mr-1" />
-                        Create Story
-                    </Link>
+                    {isSignedIn ? (
+                        <button
+                            onClick={() => {
+                                window.location.href = '/onboarding?reset=true';
+                            }}
+                            className="text-sm font-medium text-purple-600"
+                        >
+                            <Plus className="h-4 w-4 inline mr-1" />
+                            Create Story
+                        </button>
+                    ) : (
+                        <Link
+                            href="/sign-up"
+                            className="text-sm font-medium text-purple-600"
+                        >
+                            <Plus className="h-4 w-4 inline mr-1" />
+                            Create Story
+                        </Link>
+                    )}
                 </div>
             </div>
         </nav>

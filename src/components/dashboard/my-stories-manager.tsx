@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { StoryListItem } from './story-list-item';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, Plus, Search, Filter } from 'lucide-react';
+import { Loader2, Plus, Search, Filter, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -116,6 +116,25 @@ export function MyStoriesManager() {
     }
   };
 
+  // Handle story deletion
+  const handleDelete = async (storyId: string) => {
+    try {
+      const response = await fetch(`/api/stories/${storyId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete story');
+      }
+
+      // Remove from local state
+      setStories(prev => prev.filter(story => story.id !== storyId));
+    } catch (error) {
+      console.error('Error deleting story:', error);
+      throw error; // Re-throw to handle in the UI
+    }
+  };
+
   return (
     <div>
       {/* Controls */}
@@ -146,12 +165,16 @@ export function MyStoriesManager() {
           </SelectContent>
         </Select>
 
-        <Link href="/onboarding">
-          <Button className="bg-purple-600 hover:bg-purple-700">
-            <Plus className="w-4 h-4 mr-2" />
-            Create New Story
-          </Button>
-        </Link>
+        <Button 
+          onClick={() => {
+            // Use window.location to ensure a full page reload and reset
+            window.location.href = '/onboarding?reset=true';
+          }}
+          className="bg-purple-600 hover:bg-purple-700"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Create New Story
+        </Button>
       </div>
 
       {/* Stories List */}
@@ -174,12 +197,15 @@ export function MyStoriesManager() {
               : 'Create your first magical story today!'}
           </p>
           {!searchQuery && statusFilter === 'all' && (
-            <Link href="/onboarding">
-              <Button className="bg-purple-600 hover:bg-purple-700">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Your First Story
-              </Button>
-            </Link>
+            <Button 
+              onClick={() => {
+                window.location.href = '/onboarding?reset=true';
+              }}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Create Your First Story
+            </Button>
           )}
         </div>
       ) : (
@@ -201,6 +227,7 @@ export function MyStoriesManager() {
                   <StoryListItem
                     story={story}
                     onPrivacyToggle={handlePrivacyToggle}
+                    onDelete={handleDelete}
                   />
                 </motion.div>
               ))}

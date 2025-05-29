@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { StoryCard } from './story-card';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, Filter, TrendingUp, Clock, Heart, Sparkles } from 'lucide-react';
+import { Loader2, Filter, TrendingUp, Clock, Heart, Sparkles, Star, Droplet, Wand2, BookMarked, Camera, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import {
   Select,
   SelectContent,
@@ -31,12 +32,13 @@ interface Story {
 }
 
 const STYLES = [
-  { value: 'all', label: 'All Styles' },
-  { value: 'cartoonish', label: 'Cartoonish' },
-  { value: 'pixar', label: 'Pixar/Disney' },
-  { value: 'watercolor', label: 'Watercolor' },
-  { value: 'storybook', label: 'Storybook' },
-  { value: 'minimalist', label: 'Minimalist' },
+  { value: 'all', label: 'All Styles', icon: Sparkles, gradient: 'from-gray-500 to-gray-600' },
+  { value: 'cartoonish', label: 'Cartoonish', icon: Star, gradient: 'from-pink-500 to-purple-600' },
+  { value: 'pixar', label: 'Pixar-Style', icon: Sparkles, gradient: 'from-blue-500 to-cyan-500' },
+  { value: 'watercolor', label: 'Watercolor', icon: Droplet, gradient: 'from-teal-400 to-emerald-400' },
+  { value: 'storybook', label: 'Storybook', icon: BookMarked, gradient: 'from-amber-500 to-orange-500' },
+  { value: 'whimsical', label: 'Whimsical', icon: Wand2, gradient: 'from-purple-500 to-violet-600' },
+  { value: 'realistic', label: 'Realistic', icon: Camera, gradient: 'from-green-600 to-emerald-600' },
 ];
 
 const SORT_OPTIONS = [
@@ -66,18 +68,37 @@ export function CommunityGallery() {
       });
       
       const response = await fetch(`/api/stories/public?${params}`);
-      const data = await response.json();
       
-      if (reset) {
-        setStories(data.stories);
-      } else {
-        setStories(prev => [...prev, ...data.stories]);
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
       }
       
-      setTotalCount(data.pagination.totalCount);
-      setHasMore(pageNum < data.pagination.totalPages);
+      const data = await response.json();
+      
+      // Validate response structure
+      if (!data || !data.stories) {
+        console.error('Invalid API response:', data);
+        throw new Error('Invalid response format');
+      }
+      
+      if (reset) {
+        setStories(data.stories || []);
+      } else {
+        setStories(prev => [...prev, ...(data.stories || [])]);
+      }
+      
+      // Safe access with defaults
+      setTotalCount(data.pagination?.totalCount || 0);
+      setHasMore(data.pagination ? pageNum < data.pagination.totalPages : false);
     } catch (error) {
       console.error('Error fetching stories:', error);
+      toast.error('Failed to load stories');
+      // Set defaults on error
+      if (reset) {
+        setStories([]);
+      }
+      setTotalCount(0);
+      setHasMore(false);
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -98,6 +119,22 @@ export function CommunityGallery() {
     const nextPage = page + 1;
     setPage(nextPage);
     fetchStories(nextPage);
+  };
+  
+  // Handle like toggle
+  const handleLikeToggle = (storyId: string, isLiked: boolean) => {
+    setStories(prevStories => 
+      prevStories.map(story => {
+        if (story.id === storyId) {
+          return {
+            ...story,
+            isLikedByUser: isLiked,
+            likesCount: isLiked ? story.likesCount + 1 : story.likesCount - 1
+          };
+        }
+        return story;
+      })
+    );
   };
 
   // Track views when story is opened
@@ -146,15 +183,40 @@ export function CommunityGallery() {
           {/* Style Filter */}
           <Select value={styleFilter} onValueChange={setStyleFilter}>
             <SelectTrigger className="w-[180px]">
-              <Filter className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Filter by style" />
+              {(() => {
+                const selectedStyle = STYLES.find(s => s.value === styleFilter);
+                if (!selectedStyle) return <SelectValue placeholder="Filter by style" />;
+                const Icon = selectedStyle.icon;
+                return (
+                  <div className="flex items-center gap-2">
+                    <span className={cn(
+                      "inline-flex items-center justify-center w-5 h-5 rounded-full bg-gradient-to-r text-white",
+                      selectedStyle.gradient
+                    )}>
+                      <Icon className="w-3 h-3" />
+                    </span>
+                    <span>{selectedStyle.label}</span>
+                  </div>
+                );
+              })()}
             </SelectTrigger>
             <SelectContent>
-              {STYLES.map(style => (
-                <SelectItem key={style.value} value={style.value}>
-                  {style.label}
-                </SelectItem>
-              ))}
+              {STYLES.map(style => {
+                const Icon = style.icon;
+                return (
+                  <SelectItem key={style.value} value={style.value}>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "inline-flex items-center justify-center w-5 h-5 rounded-full bg-gradient-to-r text-white",
+                        style.gradient
+                      )}>
+                        <Icon className="w-3 h-3" />
+                      </span>
+                      {style.label}
+                    </div>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
 
@@ -219,7 +281,7 @@ export function CommunityGallery() {
                   variants={itemVariants}
                   layout
                 >
-                  <StoryCard story={story} />
+                  <StoryCard story={story} onLikeToggle={handleLikeToggle} />
                 </motion.div>
               ))}
             </AnimatePresence>

@@ -29,14 +29,17 @@ export async function GET(request: NextRequest) {
     // Get total count for pagination
     const totalCount = await prisma.story.count({ where });
     
+    // Map sort field names to actual database columns
+    const sortField = sortBy === 'views' ? 'viewsCount' : 
+                     sortBy === 'likes' ? 'likesCount' : 
+                     sortBy;
+    
     // Fetch stories with related data
     const stories = await prisma.story.findMany({
       where,
       skip,
       take: limit,
-      orderBy: sortBy === 'likes' 
-        ? { likesCount: sortOrder as 'asc' | 'desc' }
-        : { [sortBy]: sortOrder },
+      orderBy: { [sortField]: sortOrder as 'asc' | 'desc' },
       include: {
         user: {
           select: {
