@@ -1,9 +1,12 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
-import { motion } from 'framer-motion';
-import { Wand2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Wand2, AlertCircle, Sparkles, BookOpen, Palette, Heart, Users } from 'lucide-react';
+import { ContinueButton } from '@/components/ui/continue-button';
+import { SpeechBubble } from './speech-bubble';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export function GeneratingStep() {
@@ -18,13 +21,15 @@ export function GeneratingStep() {
         generationError,
         setGenerationError,
         generatedStoryId,
-        selectedElements
+        selectedElements,
+        isGeneratingStory
     } = useOnboarding();
 
     // Local state
     const [isGenerationStarted, setIsGenerationStarted] = useState(false);
     const [isCreatingStory, setIsCreatingStory] = useState(false);
     const [hasNavigated, setHasNavigated] = useState(false); // Prevent multiple navigations
+    const [isCheckingStory, setIsCheckingStory] = useState(false); // Prevent concurrent checks
 
     // Function to start the story creation process
     const startStoryCreation = async () => {
@@ -85,16 +90,23 @@ export function GeneratingStep() {
         console.log('GeneratingStep navigation effect:', {
             generatedStoryId,
             generationProgress,
-            hasNavigated
+            hasNavigated,
+            isCheckingStory
         });
         
-        if (generatedStoryId && generationProgress >= 25 && !hasNavigated) {
+        if (generatedStoryId && generationProgress >= 25 && !hasNavigated && !isCheckingStory) {
             // Check if story pages are ready
             const checkStoryReady = async () => {
+                // Prevent concurrent checks
+                if (isCheckingStory || hasNavigated) return;
+                
+                setIsCheckingStory(true);
+                
                 try {
                     const response = await fetch(`/api/story/${generatedStoryId}`);
                     if (!response.ok) {
                         console.error('Failed to fetch story:', response.status);
+                        setIsCheckingStory(false);
                         return;
                     }
 
@@ -110,10 +122,16 @@ export function GeneratingStep() {
                     if (storyData.pages && storyData.pages.length > 0 && !hasNavigated) {
                         console.log('Story pages ready, navigating to review step (step 9)');
                         setHasNavigated(true); // Prevent multiple navigations
-                        goToNextStep(); // This should go to step 9 (Review)
+                        // Add a small delay to ensure smooth transition
+                        setTimeout(() => {
+                            goToNextStep(); // This should go to step 9 (Review)
+                        }, 100);
+                    } else {
+                        setIsCheckingStory(false);
                     }
                 } catch (error) {
                     console.error('Error checking story status:', error);
+                    setIsCheckingStory(false);
                 }
             };
 
@@ -131,7 +149,7 @@ export function GeneratingStep() {
                 return () => clearInterval(interval);
             }
         }
-    }, [generatedStoryId, generationProgress, goToNextStep, hasNavigated]);
+    }, [generatedStoryId, generationProgress, goToNextStep, hasNavigated, isCheckingStory]);
 
     // Handle retry
     const handleRetry = () => {
@@ -162,196 +180,222 @@ export function GeneratingStep() {
         return characters.map(char => char.name).join(', ');
     };
 
-    // Define progress message based on current progress
+    // Define progress message based on current progress - mascot speaking
     const getProgressMessage = () => {
-        if (generationProgress < 25) return 'Preparing your adventure...';
-        if (generationProgress < 50) return 'Crafting your characters...';
-        if (generationProgress < 75) return 'Building your world...';
-        return 'Adding final magical touches...';
+        if (generationProgress < 25) return "I'm gathering all the story ingredients... This is so exciting! 🎨";
+        if (generationProgress < 50) return "Now I'm bringing your characters to life! They're looking wonderful! ✨";
+        if (generationProgress < 75) return "Building your magical world page by page... Almost there! 📚";
+        return "Adding the final sprinkles of magic! Your story is almost ready! 🌟";
     };
 
+    // Handle returning to this step with existing story
+    useEffect(() => {
+        // If we already have a story ID and progress, we're coming back to this step
+        if (generatedStoryId && generationProgress > 0) {
+            setIsGenerationStarted(true);
+            setIsCreatingStory(true);
+        }
+        // Also sync with context's isGeneratingStory flag
+        if (isGeneratingStory) {
+            setIsGenerationStarted(true);
+            setIsCreatingStory(true);
+        }
+    }, [generatedStoryId, generationProgress, isGeneratingStory]);
+
     return (
-        <div className="flex flex-col items-center justify-center px-6 h-full">
-            <div className="w-full max-w-md flex flex-col items-center text-center py-12">
-                {!generationError ? (
-                    !isGenerationStarted ? (
+        <div className="flex flex-col items-center justify-center px-4 sm:px-6 h-full">
+            <AnimatePresence mode="wait">
+                <motion.div 
+                    key={isGenerationStarted ? 'generating' : 'confirm'}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="w-full max-w-md flex flex-col items-center text-center py-8 sm:py-12"
+                >
+                    {!generationError ? (
+                        !isGenerationStarted ? (
                         // Story confirmation view
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            className="w-full"
-                        >
-                            <div className="mb-8">
-                                <CheckCircle2 className="w-16 h-16 mx-auto text-[#4CAF50]" />
+                        <div className="w-full">
+                            {/* Speech bubble with mascot */}
+                            <div className="mb-6">
+                                <SpeechBubble
+                                    message="Wow! Your story is ready to be created! I've gathered all the magical ingredients - your characters, style, and theme. Ready to see the magic happen?"
+                                    animateIn={true}
+                                    position="left"
+                                />
                             </div>
 
-                            <h2 className="text-2xl font-bold mb-6">Ready to Create Your Story</h2>
+                            <h2 className="text-xl sm:text-2xl font-bold mb-6 text-center">
+                                Your Story Recipe 📚✨
+                            </h2>
 
-                            <div className="bg-gray-50 p-6 rounded-lg mb-8 text-left">
-                                <h3 className="font-medium text-lg mb-4 text-center">Story Summary</h3>
-
-                                <div className="space-y-3">
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-500">Theme</p>
-                                        <p className="font-medium">{themePrompt || 'Custom theme'}</p>
+                            {/* Story Summary Cards - Visual and Engaging */}
+                            <div className="space-y-3 mb-8">
+                                {/* Theme Card */}
+                                <div className="group bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-xl border border-purple-200 hover:shadow-md transition-all duration-200 cursor-default">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-purple-200 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                            <BookOpen className="w-5 h-5 text-purple-700" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-xs font-medium text-purple-600 mb-0.5">Story Theme</p>
+                                            <p className="text-sm font-semibold text-purple-900 line-clamp-2">{themePrompt || 'Custom adventure'}</p>
+                                        </div>
                                     </div>
+                                </div>
 
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-500">Style</p>
-                                        <p className="font-medium">{getStyleName()}</p>
+                                {/* Style Card */}
+                                <div className="group bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-xl border border-blue-200 hover:shadow-md transition-all duration-200 cursor-default">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-blue-200 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                            <Palette className="w-5 h-5 text-blue-700" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-xs font-medium text-blue-600 mb-0.5">Visual Style</p>
+                                            <p className="text-sm font-semibold text-blue-900">{getStyleName()}</p>
+                                        </div>
                                     </div>
+                                </div>
 
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-500">Tone</p>
-                                        <p className="font-medium">{getToneDescription()}</p>
+                                {/* Tone Card */}
+                                <div className="group bg-gradient-to-r from-orange-50 to-orange-100 p-4 rounded-xl border border-orange-200 hover:shadow-md transition-all duration-200 cursor-default">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-orange-200 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                            <Heart className="w-5 h-5 text-orange-700" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-xs font-medium text-orange-600 mb-0.5">Story Tone</p>
+                                            <p className="text-sm font-semibold text-orange-900">{getToneDescription()}</p>
+                                        </div>
                                     </div>
+                                </div>
 
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-500">Characters</p>
-                                        <p className="font-medium">{getCharacters()}</p>
+                                {/* Characters Card */}
+                                <div className="group bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-xl border border-green-200 hover:shadow-md transition-all duration-200 cursor-default">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-green-200 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                            <Users className="w-5 h-5 text-green-700" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-xs font-medium text-green-600 mb-0.5">Characters</p>
+                                            <p className="text-sm font-semibold text-green-900 line-clamp-2">{getCharacters()}</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <Button
-                                onClick={startStoryCreation}
-                                className="w-full py-6 text-lg font-semibold rounded-full bg-[#F9A826] hover:bg-[#F39C12] text-white shadow-lg hover:shadow-xl transition-all duration-300"
-                            >
-                                <Wand2 className="w-5 h-5 mr-2" />
-                                Start Generation
-                            </Button>
+                            {/* Magic CTA Button */}
+                            <div className="px-2 sm:px-0">
+                                <ContinueButton
+                                    onClick={startStoryCreation}
+                                    className="w-full"
+                                >
+                                    <Sparkles className="w-5 h-5 mr-2 animate-pulse" />
+                                    Create My Magical Story
+                                </ContinueButton>
+                            </div>
 
-                            <p className="text-sm text-gray-500 mt-4">
-                                This will create a 5-page story with illustrations
-                            </p>
-                            <p className="text-xs text-orange-600 mt-2">
-                                Note: Image generation requires a valid OpenAI API key
-                            </p>
-                        </motion.div>
+                            {/* Fun facts */}
+                            <div className="mt-6 text-center px-4 sm:px-0">
+                                <div className="inline-flex items-center gap-2 px-4 py-2 bg-purple-50 rounded-full">
+                                    <Sparkles className="w-4 h-4 text-purple-600" />
+                                    <p className="text-xs font-medium text-purple-700">
+                                        5 magical pages with AI illustrations
+                                    </p>
+                                    <Sparkles className="w-4 h-4 text-purple-600" />
+                                </div>
+                            </div>
+                        </div>
                     ) : (
                         // Generation in progress view
-                        <>
-                            {/* Magic animation */}
-                            <motion.div
-                                initial={{ scale: 0.8, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                transition={{ duration: 0.5 }}
-                                className="mb-8"
-                            >
-                                <div className="relative">
-                                    <motion.div
-                                        animate={{
-                                            rotate: [0, 360],
-                                            scale: [1, 1.05, 1]
-                                        }}
-                                        transition={{
-                                            duration: 3,
-                                            repeat: Infinity,
-                                            ease: "linear"
-                                        }}
-                                        className="w-24 h-24 rounded-full bg-[#4CAF50]/10 flex items-center justify-center"
-                                    >
-                                        <Wand2 className="w-12 h-12 text-[#4CAF50]" />
-                                    </motion.div>
+                        <div className="w-full">
+                            {/* Speech bubble with loading message */}
+                            <div className="mb-8">
+                                <SpeechBubble
+                                    message={getProgressMessage()}
+                                    animateIn={true}
+                                    position="left"
+                                />
+                            </div>
 
-                                    {/* Orbiting particles */}
-                                    {[...Array(6)].map((_, i) => (
-                                        <motion.div
-                                            key={i}
-                                            className="absolute w-3 h-3 rounded-full bg-[#4CAF50]"
-                                            style={{
-                                                top: '50%',
-                                                left: '50%',
-                                                translateX: '-50%',
-                                                translateY: '-50%'
-                                            }}
-                                            animate={{
-                                                scale: [0.8, 1.5, 0.8],
-                                                opacity: [0.5, 1, 0.5],
-                                                x: [`${Math.cos(i * 60 * Math.PI/180) * 60}px`, `${Math.cos((i * 60 + 360) * Math.PI/180) * 60}px`],
-                                                y: [`${Math.sin(i * 60 * Math.PI/180) * 60}px`, `${Math.sin((i * 60 + 360) * Math.PI/180) * 60}px`]
-                                            }}
-                                            transition={{
-                                                duration: 3,
-                                                repeat: Infinity,
-                                                ease: "linear",
-                                                delay: i * 0.2
-                                            }}
-                                        />
-                                    ))}
-                                </div>
-                            </motion.div>
-
-                            <motion.h2
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.5 }}
-                                className="text-2xl font-bold mb-2"
-                            >
-                                Creating Your Story
-                            </motion.h2>
-
-                            <motion.p
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.7 }}
-                                className="text-gray-600 mb-8"
-                            >
-                                {getProgressMessage()}
-                            </motion.p>
-
-                            {/* Center-expanding progress bar */}
-                            <div className="w-full mb-3 h-4 bg-gray-100 rounded-full overflow-hidden relative">
-                                <div className="absolute inset-0 flex justify-center items-center">
-                                    <motion.div
-                                        initial={{ width: "0%" }}
-                                        animate={{ width: `${generationProgress}%` }}
-                                        transition={{
-                                            duration: 0.5,
-                                            ease: "easeInOut"
-                                        }}
-                                        className="h-full bg-gradient-to-r from-[#9333ea] via-[#7e22ce] to-[#6b21a8] rounded-full"
-                                        style={{
-                                            transformOrigin: 'center',
-                                            position: 'absolute',
-                                            left: `${50 - generationProgress/2}%`
-                                        }}
-                                    />
+                            {/* Simplified magic animation using Tailwind */}
+                            <div className="mb-8">
+                                <div className="relative mx-auto w-24 h-24">
+                                    {/* Pulsing background */}
+                                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#4CAF50]/20 to-[#43a047]/20 animate-pulse" />
+                                    
+                                    {/* Rotating wand */}
+                                    <div className="relative w-full h-full rounded-full bg-gradient-to-br from-[#4CAF50] to-[#43a047] flex items-center justify-center shadow-lg animate-spin-slow">
+                                        <Wand2 className="w-12 h-12 text-white" />
+                                    </div>
+                                    
+                                    {/* Sparkles around */}
+                                    <div className="absolute -top-2 -right-2">
+                                        <Sparkles className="w-6 h-6 text-yellow-400 animate-pulse" />
+                                    </div>
+                                    <div className="absolute -bottom-2 -left-2">
+                                        <Sparkles className="w-5 h-5 text-purple-400 animate-pulse animation-delay-200" />
+                                    </div>
+                                    <div className="absolute top-1/2 -right-4">
+                                        <Sparkles className="w-4 h-4 text-blue-400 animate-pulse animation-delay-400" />
+                                    </div>
                                 </div>
                             </div>
-                            <p className="text-sm font-medium text-purple-700">
-                                {Math.round(generationProgress)}% Complete
-                            </p>
-                        </>
+
+                            <h2 className="text-xl sm:text-2xl font-bold mb-8 text-center">
+                                Creating Your Magical Story 🎆
+                            </h2>
+
+                            {/* Progress bar with better styling */}
+                            <div className="w-full max-w-xs mx-auto mb-3">
+                                <div className="h-3 bg-gray-200 rounded-full overflow-hidden shadow-inner">
+                                    <div 
+                                        className="h-full bg-gradient-to-r from-purple-400 via-purple-500 to-purple-600 rounded-full transition-all duration-500 ease-out relative"
+                                        style={{ width: `${generationProgress}%` }}
+                                    >
+                                        {/* Shimmer effect */}
+                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                                    </div>
+                                </div>
+                                <p className="text-sm font-medium text-purple-700 text-center mt-2">
+                                    {Math.round(generationProgress)}% Complete
+                                </p>
+                            </div>
+
+                            {/* Fun loading messages */}
+                            <div className="mt-6 text-center">
+                                <p className="text-xs text-gray-500 animate-pulse">
+                                    🌟 Sprinkling story dust...
+                                </p>
+                            </div>
+                        </div>
                     )
                 ) : (
                     // Error state
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="flex flex-col items-center"
-                    >
-                        <div className="w-24 h-24 rounded-full bg-red-100 flex items-center justify-center mb-6">
-                            <AlertCircle className="w-12 h-12 text-red-500" />
+                    <div className="flex flex-col items-center px-4 sm:px-0 animate-in fade-in duration-300">
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-red-100 flex items-center justify-center mb-4 sm:mb-6">
+                            <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-red-500" />
                         </div>
 
-                        <h2 className="text-2xl font-bold mb-4 text-red-600">
+                        <h2 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-red-600 text-center">
                             Oops! Something Went Wrong
                         </h2>
 
-                        <p className="text-gray-600 mb-6">
+                        <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 text-center">
                             {generationError}
                         </p>
 
                         <Button
                             onClick={handleRetry}
-                            className="px-8 py-3 bg-[#4CAF50] hover:bg-[#43a047] text-white rounded-full font-medium"
+                            className="px-6 sm:px-8 py-2.5 sm:py-3 bg-[#4CAF50] hover:bg-[#43a047] text-white rounded-full font-medium cursor-pointer shadow-md hover:shadow-lg active:bg-[#3d943f] focus:outline-none focus:ring-4 focus:ring-[#4CAF50]/30 transition-all duration-300 min-h-[44px]"
                         >
                             Try Again
                         </Button>
-                    </motion.div>
+                    </div>
                 )}
-            </div>
+                </motion.div>
+            </AnimatePresence>
         </div>
     );
 }

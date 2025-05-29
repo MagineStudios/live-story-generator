@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
-import { Button } from '@/components/ui/button';
+import { ContinueButton } from '@/components/ui/continue-button';
 import { SpeechBubble } from './speech-bubble';
 import { motion } from 'framer-motion';
 
@@ -51,7 +51,7 @@ export function MascotIntroStep() {
     }, []);
 
     return (
-        <div className="flex flex-col px-6 pb-8 h-full">
+        <div className="flex flex-col px-4 sm:px-6 pb-8 h-full">
             <div className="w-full max-w-sm mx-auto flex flex-col justify-between h-full">
                 <div className="flex-1 flex flex-col justify-center items-center mt-20">
                     <div className="w-full">
@@ -68,12 +68,10 @@ export function MascotIntroStep() {
                     transition={{ delay: 0.8, duration: 0.5 }}
                     className="w-full mb-4"
                 >
-                    <Button
+                    <ContinueButton
                         onClick={goToNextStep}
-                        className="w-full py-6 text-lg font-medium rounded-full bg-[#4CAF50] hover:bg-[#43a047] text-white cursor-pointer font-nunito shadow-md hover:shadow-lg transition-all duration-300"
-                    >
-                        CONTINUE
-                    </Button>
+                        className="w-full font-nunito"
+                    />
                 </motion.div>
             </div>
         </div>

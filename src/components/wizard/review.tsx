@@ -46,7 +46,8 @@ const MAX_POLLING_DURATION = 180000; // 3 minutes
 export default function Review() {
     const [storyPages, setStoryPages] = useState<StoryPage[]>([]);
     const [storyTitle, setStoryTitle] = useState<string>('');
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(true); // Start with true for initial load
+    const [hasLoadedStory, setHasLoadedStory] = useState(false); // Track if we've loaded story data
     const [currentPage, setCurrentPage] = useState(0);
     const [imageGenerationStarted, setImageGenerationStarted] = useState(false);
     const [isPolling, setIsPolling] = useState(false);
@@ -265,11 +266,10 @@ export default function Review() {
 
     // Fetch story pages
     useEffect(() => {
-        if (!generatedStoryId) return;
+        if (!generatedStoryId || hasLoadedStory) return;
 
         async function fetchStory() {
             try {
-                setIsLoading(true);
                 const response = await fetch(`/api/story/${generatedStoryId}`);
 
                 if (!response.ok) throw new Error('Failed to fetch story');
@@ -294,31 +294,41 @@ export default function Review() {
                 });
                 
                 setStoryPages(pagesWithStatus);
+                setHasLoadedStory(true);
                 
-                // Check if any pages need images
-                const needsImages = pagesWithStatus.some((page: StoryPage) => 
-                    page.imageStatus === 'generating' && !page.imageUrl
-                );
-                
-                if (needsImages && !imageGenerationStarted && !generationStartedRef.current) {
-                    generationStartedRef.current = true;
-                    // Start generation immediately with smooth transition
+                // Only show loading screen briefly if we have pages
+                if (pagesWithStatus.length > 0) {
+                    // Small delay for smooth transition
                     setTimeout(() => {
-                        generateImages(pagesWithStatus);
-                    }, 1000);
+                        setIsLoading(false);
+                    }, 300);
+                    
+                    // Check if any pages need images
+                    const needsImages = pagesWithStatus.some((page: StoryPage) => 
+                        page.imageStatus === 'generating' && !page.imageUrl
+                    );
+                    
+                    if (needsImages && !imageGenerationStarted && !generationStartedRef.current) {
+                        generationStartedRef.current = true;
+                        // Start generation immediately after loading is done
+                        setTimeout(() => {
+                            generateImages(pagesWithStatus);
+                        }, 800);
+                    }
+                } else {
+                    setIsLoading(false);
                 }
             } catch (error) {
                 console.error('Error fetching story:', error);
                 toast.error('Failed to load story', {
                     description: 'Please refresh the page to try again.'
                 });
-            } finally {
                 setIsLoading(false);
             }
         }
 
         fetchStory();
-    }, [generatedStoryId, imageGenerationStarted]);
+    }, [generatedStoryId, hasLoadedStory]); // Use hasLoadedStory to prevent refetch
 
     // Generate images function
     async function generateImages(pages?: StoryPage[]) {
@@ -696,55 +706,23 @@ export default function Review() {
         return (
             <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.3 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.2 }}
                     className="flex flex-col items-center justify-center"
                 >
-                    {/* Spinner container with better sizing */}
-                    <div className="relative mb-8">
-                        <div className="w-24 h-24 rounded-full bg-[#4CAF50]/10 flex items-center justify-center">
-                            <div className="absolute inset-0 rounded-full border-4 border-[#4CAF50]/20" />
-                            <div className="w-24 h-24 rounded-full border-4 border-transparent border-t-[#4CAF50] animate-spin" />
+                    {/* Simple loading with quick transition */}
+                    <div className="relative mb-6">
+                        <div className="w-16 h-16 rounded-full bg-[#4CAF50]/10 flex items-center justify-center">
+                            <div className="w-16 h-16 rounded-full border-3 border-transparent border-t-[#4CAF50] animate-spin" />
                         </div>
-                        {/* Additional decorative elements */}
-                        <motion.div
-                            className="absolute -inset-4"
-                            initial={{ rotate: 0 }}
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                        >
-                            <div className="w-32 h-32 rounded-full border border-dashed border-[#4CAF50]/20" />
-                        </motion.div>
                     </div>
                     
-                    {/* Text content with better spacing */}
-                    <div className="text-center space-y-2">
-                        <h2 className="text-2xl font-semibold text-gray-800">
-                            Loading your story...
-                        </h2>
-                        <p className="text-base text-gray-600">
-                            Get ready for something amazing!
+                    {/* Minimal text */}
+                    <div className="text-center">
+                        <p className="text-lg text-gray-700">
+                            Preparing your story...
                         </p>
-                    </div>
-                    
-                    {/* Progress dots animation */}
-                    <div className="flex gap-1.5 mt-8">
-                        {[0, 1, 2].map((i) => (
-                            <motion.div
-                                key={i}
-                                className="w-2 h-2 rounded-full bg-[#4CAF50]"
-                                animate={{
-                                    scale: [1, 1.5, 1],
-                                    opacity: [0.5, 1, 0.5],
-                                }}
-                                transition={{
-                                    duration: 1.5,
-                                    repeat: Infinity,
-                                    delay: i * 0.2,
-                                }}
-                            />
-                        ))}
                     </div>
                 </motion.div>
             </div>
@@ -840,7 +818,7 @@ export default function Review() {
                                                 <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-ping" />
                                             </div>
                                             <span className="text-sm font-medium text-gray-700">
-                                                While we draw, here's a joke! 😊
+                                                While we draw, here's a joke! 😊☝️👆
                                             </span>
                                         </div>
                                         <Badge 

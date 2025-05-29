@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
-import { Button } from '@/components/ui/button';
+import { ContinueButton } from '@/components/ui/continue-button';
 import { motion } from 'framer-motion';
 import { CheckCircle } from 'lucide-react';
 import { SpeechBubble } from './speech-bubble';
@@ -44,7 +44,7 @@ export function QuestionnaireIntroStep() {
     };
 
     return (
-        <div className="flex flex-col px-6 pb-8 h-full">
+        <div className="flex flex-col px-4 sm:px-6 pb-8 h-full">
             <div className="w-full max-w-sm mx-auto flex flex-col justify-between h-full">
                 {/* Content with mascot and speech bubble */}
                 <div className="flex-1 flex flex-col justify-center mt-12">
@@ -98,12 +98,10 @@ export function QuestionnaireIntroStep() {
                     transition={{ delay: 1.2, duration: 0.5 }}
                     className="w-full mb-4"
                 >
-                    <Button
+                    <ContinueButton
                         onClick={goToNextStep}
-                        className="w-full py-6 text-lg font-medium rounded-full bg-[#4CAF50] hover:bg-[#43a047] text-white cursor-pointer font-nunito shadow-md hover:shadow-lg transition-all duration-300"
-                    >
-                        CONTINUE
-                    </Button>
+                        className="w-full font-nunito"
+                    />
                 </motion.div>
             </div>
         </div>

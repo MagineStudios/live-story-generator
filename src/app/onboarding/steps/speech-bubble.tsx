@@ -2,7 +2,7 @@
 
 import React, { ReactNode } from 'react';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
+import { cn } from '@/lib/utils';
 
 interface SpeechBubbleProps {
     /** The text or JSX to display inside the bubble */
@@ -24,18 +24,14 @@ export function SpeechBubble({
                                  heightClass,
                                  position = 'right',
                              }: SpeechBubbleProps) {
-    // Different motion variants for different layouts
-    const motionProps = animateIn
-        ? {
-            initial: { opacity: 0, y: -10, scale: 0.95 },
-            animate: { opacity: 1, y: 0, scale: 1 },
-            transition: { duration: 0.4, ease: "easeOut" }
-        }
-        : { initial: false, animate: false };
+    // Animation classes using Tailwind - simplified for smoother transition
+    const animationClass = animateIn 
+        ? 'animate-in fade-in duration-200' 
+        : '';
 
     // Position-specific classes and bubble-tail styles
     let containerClasses = "";
-    let bubbleClasses = "bg-white p-5 rounded-2xl shadow-[0_3px_8px_rgba(0,0,0,0.2)] flex items-center"; // Enhanced shadow with flex
+    let bubbleClasses = "bg-white p-4 sm:p-5 rounded-2xl shadow-[0_3px_8px_rgba(0,0,0,0.2)] flex items-center"; // Enhanced shadow with flex
     let caretClasses = "";
     let tailElement = null;
 
@@ -61,36 +57,35 @@ export function SpeechBubble({
     }
 
     return (
-        <div className={`${containerClasses} mb-6`}>
+        <div className={cn(containerClasses, 'mb-6')}>
             {position !== 'top' && (
+                <div className="flex-shrink-0">
+                    <Image
+                        src={avatarSrc}
+                        alt="Magic Story mascot"
+                        width={80}
+                        height={80}
+                        className="rounded-full w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24"
+                    />
+                </div>
+            )}
+            <div
+                className={cn("relative flex-1", animationClass)}
+            >
+                <div className={cn(bubbleClasses, 'relative', heightClass)}>
+                    <div className="text-sm sm:text-base lg:text-lg font-nunito leading-relaxed w-full">{message}</div>
+                    {/* The caret/tail with its own shadow */}
+                    {tailElement}
+                </div>
+            </div>
+            {position === 'top' && (
                 <div className="flex-shrink-0">
                     <Image
                         src={avatarSrc}
                         alt="Magic Story mascot"
                         width={100}
                         height={100}
-                        className="rounded-full"
-                    />
-                </div>
-            )}
-            <motion.div
-                {...motionProps}
-                className="relative flex-1"
-            >
-                <div className={`${bubbleClasses} relative ${heightClass || ''}`}>
-                    <div className="text-lg font-nunito leading-relaxed w-full">{message}</div>
-                    {/* The caret/tail with its own shadow */}
-                    {tailElement}
-                </div>
-            </motion.div>
-            {position === 'top' && (
-                <div className="flex-shrink-0">
-                    <Image
-                        src={avatarSrc}
-                        alt="Magic Story mascot"
-                        width={120}
-                        height={120}
-                        className="rounded-full"
+                        className="rounded-full w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28"
                     />
                 </div>
             )}

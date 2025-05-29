@@ -1,5 +1,5 @@
 'use client';
-import React, { createContext, useContext, useCallback, useEffect, useState } from 'react';
+import React, { createContext, useContext, useCallback, useEffect, useState, useMemo } from 'react';
 import { ElementCategory, StoryStatus } from '@prisma/client';
 import { useAuth } from '@clerk/nextjs';  // Clerk hook to detect logged-in user
 import type { OnboardingSession, MyWorldElement } from '@prisma/client';
@@ -93,39 +93,10 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     const { userId } = useAuth();  // Clerk user ID (if logged in)
     const MAX_STEPS = 11;          // Total steps: 0-11 in the wizard
 
-    // Check for reset parameter on mount
-    useEffect(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const shouldReset = urlParams.get('reset') === 'true';
-        
-        if (shouldReset) {
-            // Remove the reset parameter from URL
-            const newUrl = new URL(window.location.href);
-            newUrl.searchParams.delete('reset');
-            window.history.replaceState({}, '', newUrl.toString());
-            
-            // Trigger reset
-            resetOnboarding();
-        }
-    }, []); // Empty dependency array for mount only
-
     // Determine or generate a tempId for guest sessions only
     const [tempId, setTempId] = useState<string | null>(null);
-    const [shouldResetOnMount, setShouldResetOnMount] = useState(false);
-    
-    // Check for reset parameter on mount
-    useEffect(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const shouldReset = urlParams.get('reset') === 'true';
-        
-        if (shouldReset) {
-            setShouldResetOnMount(true);
-            // Remove the reset parameter from URL
-            const newUrl = new URL(window.location.href);
-            newUrl.searchParams.delete('reset');
-            window.history.replaceState({}, '', newUrl.toString());
-        }
-    }, []); // Empty dependency array for mount only
+    const [shouldResetAfterInit, setShouldResetAfterInit] = useState(false);
+    const [isResetting, setIsResetting] = useState(false); // Add flag to track reset state
     useEffect(() => {
         if (userId) {
             // If user logs in, clear tempId and local storage
@@ -145,10 +116,28 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     // Load onboarding data for logged in users
     useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const hasResetParam = urlParams.get('reset') === 'true';
+        const stepParam = urlParams.get('step');
+        
+        // If reset parameter is present, mark for reset after initialization
+        if (hasResetParam) {
+            console.log('Reset parameter detected, will reset after initialization');
+            // Remove the reset parameter from URL immediately
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.delete('reset');
+            newUrl.searchParams.set('step', '1');
+            window.history.replaceState({ step: 1 }, '', newUrl.toString());
+            
+            // Mark for reset after initialization
+            setShouldResetAfterInit(true);
+            _setCurrentStep(1); // Set initial step
+            setIsInitializing(false);
+            return;
+        }
+        
         if (!userId) {
             // Check URL for step parameter on initial load
-            const urlParams = new URLSearchParams(window.location.search);
-            const stepParam = urlParams.get('step');
             if (stepParam) {
                 const step = parseInt(stepParam, 10);
                 if (!isNaN(step) && step >= 0 && step < MAX_STEPS) {
@@ -169,13 +158,14 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 if (data.storyGoal) _setStoryGoal(data.storyGoal);
                 if (data.tone) _setTone(data.tone);
                 
-                // Check URL for step parameter, but prefer saved step
-                const urlParams = new URLSearchParams(window.location.search);
-                const stepParam = urlParams.get('step');
-                
-                // IMPORTANT: Don't restore a step that's past the current generation
-                // If we're generating a story, don't jump to finish
-                if (data.currentStep !== undefined) {
+                // If URL has step parameter, use it instead of saved step
+                if (stepParam) {
+                    const step = parseInt(stepParam, 10);
+                    if (!isNaN(step) && step >= 0 && step < MAX_STEPS) {
+                        console.log('Overriding with URL step:', step);
+                        _setCurrentStep(step);
+                    }
+                } else if (data.currentStep !== undefined) {
                     console.log('Saved currentStep from server:', data.currentStep);
                     
                     // Don't restore step 10 unless we have a completed story with images
@@ -190,18 +180,11 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                         _setCurrentStep(data.currentStep);
                     } else {
                         // For steps 9-10, only restore if we have the story ID
-                        const stepFromUrl = parseInt(urlParams.get('step') || '0', 10);
-                        console.log('Using URL step instead:', stepFromUrl);
-                        _setCurrentStep(stepFromUrl);
-                    }
-                } else if (stepParam) {
-                    const step = parseInt(stepParam, 10);
-                    if (!isNaN(step) && step >= 0 && step < MAX_STEPS) {
-                        console.log('Setting step from URL:', step);
-                        _setCurrentStep(step);
+                        _setCurrentStep(0);
                     }
                 } else {
-                    console.log('No valid step to restore, keeping current:', currentStep);
+                    console.log('No valid step to restore, starting fresh');
+                    _setCurrentStep(0);
                 }
             } catch (err) {
                 console.error('Onboarding fetch error:', err);
@@ -417,14 +400,20 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     // Navigation: go to the next step
     const goToNextStep = useCallback(() => {
+        // Don't navigate during reset
+        if (isResetting) {
+            console.log('Navigation blocked during reset');
+            return;
+        }
+        
         const next = Math.min(currentStep + 1, MAX_STEPS - 1);
         console.log(`goToNextStep called: current=${currentStep}, next=${next}`);
         
         // Special check: Can only go to step 10 from step 9
         if (next === 10 && currentStep !== 9) {
             console.error(`BLOCKED: Attempting to jump to step 10 from step ${currentStep}. Must go through step 9 first!`);
-            // Force to step 9 instead
-            _setCurrentStep(9);
+            // Don't force navigation during this edge case
+            return;
             
             setTimeout(() => {
                 const url = new URL(window.location.href);
@@ -454,7 +443,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 }).catch(console.error);
             }
         }
-    }, [currentStep, userId]);
+    }, [currentStep, userId, isResetting]);
 
     const goToPrevStep = useCallback(() => {
         // Use browser back for better history management
@@ -748,30 +737,21 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
     // Reset all onboarding data to start fresh
     const resetOnboarding = useCallback(async () => {
-        // Reset all state
-        _setStoryGoal([]);
-        _setTone([]);
-        setSelectedElements([]);
-        setUploadedElements([]);
-        _setVisualStyle(undefined);
-        _setThemePrompt('');
-        setThemeSuggestions([]);
-        _setCurrentStep(1); // Start at step 1 (skip welcome)
-        _setPrimaryCharacterId(null);
-        setGeneratedStoryId(undefined);
-        setGenerationError(null);
-        setGenerationProgress(0);
-        setIsGenerating(false);
-        setIsGeneratingStory(false);
-        setIsLoadingSuggestions(false);
-        setIsAnalyzingImage(false);
-
-        // Clear localStorage for guests
-        if (!userId) {
-            localStorage.removeItem('magicstory_onboarding');
+        console.log('resetOnboarding called');
+        
+        // Prevent multiple resets
+        if (isResetting) {
+            console.log('Reset already in progress, skipping');
+            return;
         }
-
-        // Clear database for logged-in users - wait for completion
+        
+        setIsResetting(true);
+        
+        // Clear localStorage FIRST for all users
+        localStorage.removeItem('magicstory_onboarding');
+        localStorage.removeItem('magicstory_tempId');
+        
+        // Clear database for logged-in users
         if (userId) {
             try {
                 const response = await fetch('/api/onboarding/reset', {
@@ -789,10 +769,37 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
                 console.error('Error resetting onboarding in database:', error);
             }
         }
+        
+        // Reset all state immediately
+        _setStoryGoal([]);
+        _setTone([]);
+        setSelectedElements([]);
+        setUploadedElements([]);
+        _setVisualStyle(undefined);
+        _setThemePrompt('');
+        setThemeSuggestions([]);
+        _setCurrentStep(1); // Start at step 1 (skip welcome)
+        _setPrimaryCharacterId(null);
+        setGeneratedStoryId(undefined);
+        setGenerationError(null);
+        setGenerationProgress(0);
+        setIsGenerating(false);
+        setIsGeneratingStory(false);
+        setIsLoadingSuggestions(false);
+        setIsAnalyzingImage(false);
+        setIsInitializing(false);
 
-        // Force a full page reload to ensure clean state, starting at step 1
-        window.location.href = '/onboarding?step=1';
-    }, [userId]);
+        // Update URL to step 1 without reload
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.set('step', '1');
+        newUrl.searchParams.delete('reset');
+        window.history.replaceState({ step: 1 }, '', newUrl.toString());
+        
+        // Reset complete
+        setTimeout(() => {
+            setIsResetting(false);
+        }, 100);
+    }, [userId, isResetting]);
 
     // Create/generate the story based on current selections
     const createStory = useCallback(async (): Promise<{ id: string; status: string } | undefined> => {
@@ -914,8 +921,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         };
     }, [generatedStoryId, generationProgress]);
 
-    // Provide the context value to children
-    const value: OnboardingState = {
+    // Memoize the context value to prevent unnecessary re-renders
+    const value = useMemo<OnboardingState>(() => ({
         storyGoal,
         tone,
         tempId,
@@ -954,15 +961,46 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         goToPrevStep,
         goToStep, // NEW: Add direct navigation
         resetOnboarding, // NEW: Add reset functionality
-    };
-
-    // Handle reset after component is fully initialized
-    useEffect(() => {
-        if (shouldResetOnMount && !isInitializing) {
-            resetOnboarding();
-            setShouldResetOnMount(false);
-        }
-    }, [shouldResetOnMount, isInitializing, resetOnboarding]);
+    }), [
+        storyGoal,
+        tone,
+        tempId,
+        selectedElements,
+        uploadedElements,
+        visualStyle,
+        themePrompt,
+        themeSuggestions,
+        currentStep,
+        primaryCharacterId,
+        isInitializing,
+        isLoadingSuggestions,
+        isAnalyzingImage,
+        isGeneratingStory,
+        generatedStoryId,
+        isGenerating,
+        generationProgress,
+        generationError,
+        setGeneratedStoryId,
+        setGenerationError,
+        togglePrimaryElement,
+        setStoryGoal,
+        setTone,
+        addElement,
+        removeElement,
+        clearAllElements,
+        addUploadedImage,
+        updateElementName,
+        updateElementDescription,
+        setVisualStyle,
+        setThemePrompt,
+        setPrimaryCharacterId,
+        generateThemeSuggestions,
+        createStory,
+        goToNextStep,
+        goToPrevStep,
+        goToStep,
+        resetOnboarding,
+    ]);
 
     // **Migration after signup**: if the user has just signed up (userId now exists), we have guest data, and a story has been generated, trigger migration.
     useEffect(() => {
@@ -996,6 +1034,15 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
             migrateData();
         }
     }, [userId, tempId, generatedStoryId, storyGoal, tone]);
+
+    // Handle reset after initialization
+    useEffect(() => {
+        if (shouldResetAfterInit && !isInitializing) {
+            console.log('Executing reset after initialization');
+            setShouldResetAfterInit(false); // Prevent multiple resets
+            resetOnboarding();
+        }
+    }, [shouldResetAfterInit, isInitializing, resetOnboarding]);
 
     return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;
 }

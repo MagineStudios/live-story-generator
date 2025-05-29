@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { useOnboarding } from '@/lib/context/onboarding-provider';
 import { Button } from '@/components/ui/button';
+import { ContinueButton } from '@/components/ui/continue-button';
 import { SignInButton, useUser } from '@clerk/nextjs';
 import { Sparkles } from 'lucide-react';
 
@@ -43,7 +44,7 @@ export function WelcomeStep() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="flex flex-col px-6 pb-8 h-full"
+            className="flex flex-col px-4 sm:px-6 pb-8 h-full"
         >
             <div className="w-full max-w-sm mx-auto flex flex-col justify-between h-full pt-12">
                 {/* Logo and branding section */}
@@ -57,7 +58,7 @@ export function WelcomeStep() {
                             alt="Magic Story mascot"
                             width={180}
                             height={180}
-                            className="mx-auto"
+                            className="mx-auto w-32 h-32 sm:w-40 sm:h-40 lg:w-44 lg:h-44"
                             priority
                         />
                         <motion.div
@@ -72,14 +73,14 @@ export function WelcomeStep() {
 
                     <motion.h1
                         variants={itemVariants}
-                        className="text-4xl font-bold text-[#212121] mb-3 font-nunito"
+                        className="text-3xl sm:text-4xl font-bold text-[#212121] mb-3 font-nunito"
                     >
                         Magic Story
                     </motion.h1>
 
                     <motion.p
                         variants={itemVariants}
-                        className="text-gray-600 text-xl font-nunito"
+                        className="text-gray-600 text-lg sm:text-xl font-nunito"
                     >
                         Endless adventures for your child.
                     </motion.p>
@@ -88,12 +89,12 @@ export function WelcomeStep() {
                 {/* Button section */}
                 <div className="w-full space-y-4">
                     <motion.div variants={itemVariants}>
-                        <Button
+                        <ContinueButton
                             onClick={goToNextStep}
-                            className="w-full py-6 text-lg font-medium rounded-full bg-[#4CAF50] hover:bg-[#43a047] text-white cursor-pointer font-nunito transition-all duration-300 shadow-md hover:shadow-lg"
+                            className="w-full font-nunito"
                         >
                             GET STARTED
-                        </Button>
+                        </ContinueButton>
                     </motion.div>
 
                     <motion.div variants={itemVariants}>
