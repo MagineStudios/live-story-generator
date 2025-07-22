@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Sparkles, BookOpen, Plus, User, Globe } from "lucide-react";
-import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
+import { SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -110,14 +110,14 @@ export default function NavBar() {
                                         Sign In
                                     </Button>
                                 </SignInButton>
-                                <Link href="/sign-up">
+                                <SignUpButton mode="modal" forceRedirectUrl="/onboarding">
                                     <Button 
                                         size="sm"
                                         className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                                     >
                                         Get Started
                                     </Button>
-                                </Link>
+                                </SignUpButton>
                             </div>
                         )}
                     </div>
@@ -136,13 +136,12 @@ export default function NavBar() {
                             Create Story
                         </button>
                     ) : (
-                        <Link
-                            href="/sign-up"
-                            className="text-sm font-medium text-purple-600"
-                        >
-                            <Plus className="h-4 w-4 inline mr-1" />
-                            Create Story
-                        </Link>
+                        <SignUpButton mode="modal" forceRedirectUrl="/onboarding">
+                            <button className="text-sm font-medium text-purple-600">
+                                <Plus className="h-4 w-4 inline mr-1" />
+                                Create Story
+                            </button>
+                        </SignUpButton>
                     )}
                 </div>
             </div>
