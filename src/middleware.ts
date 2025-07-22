@@ -2,8 +2,10 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
 const isProtected = createRouteMatcher([
     '/dashboard(.*)',
-    '/api/(upload|generate|stripe|my-world|stories|story|styles|theme-suggestions|videos)(.*)',
+    '/api/(upload|generate|stripe|my-world|styles|theme-suggestions|videos)(.*)',
     '/api/images/(edit|background-removal|replace-background)(.*)',
+    '/api/stories/(create|update|delete)(.*)',
+    '/api/story/(create|update|delete|generate-images|add-page)(.*)',
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

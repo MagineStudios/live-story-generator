@@ -17,7 +17,8 @@
       "Bash(/Users/alexhawkins/.nvm/versions/node/v22.9.0/bin/npx tsc --noEmit)",
       "Bash(/Users/alexhawkins/.nvm/versions/node/v22.9.0/bin/npm run build)",
       "Bash(npm config:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git push:*)"
     ]
   },
   "enableAllProjectMcpServers": false
